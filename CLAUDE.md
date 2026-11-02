@@ -18,6 +18,9 @@ The `apply_rotation` facts lifted the score (v2 7.42 → v3 7.70). To pass 8.5, 
 1. **Sale is not atomic** — two revertible rotations; escrow→buyer sweep pays the escrow. Build an explicit sale state machine with every failure branch, finality-gated seller payout (after the 5-min revert window), forwarding of listing-period earnings, and a test per branch.
 2. **Own an invariant** — `deed` contract must enforce something the wallet doesn't: per-job escrowed payment with refund-if-unanswered, on-chain job/receipt ledger, activation bound to `rotation_seq`.
 3. **Runtime bound to the name, not an operator** — open-source multi-tenant runtime serving whoever the chain says owns the name; buyer needs zero ops.
+   Stronger (Claude Fable's fix): run the runtime in a TEE whose **only** credential is a wallet extension on the name. A sale makes the wallet wipe that extension, so the enclave can no longer act as the name until the buyer re-grants. "The NFT is the service" becomes a mechanism. Show the attestation and the key wipe on the title page.
+6. **Royalties** ("earn royalties" is in the track tagline): NEP-199 `nft_payout`-style resale cut to the Deed template creator, paid by the sale flow.
+7. Drop all post-quantum mentions from Deed: the panel brief accidentally carried PQ facts, and Fable called them dead weight.
 4. **Not an AI wrapper** — deterministic tx analysis first (decode actions, known contracts, unlimited approvals, drain patterns), model only explains; publish accuracy on a labelled set.
 5. Real external paid calls; a second Deed with a different ledger.
 
