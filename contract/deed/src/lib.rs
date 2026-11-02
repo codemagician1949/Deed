@@ -27,6 +27,8 @@ use near_sdk::{
 pub const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
 /// hos-wallet `REVERT_WINDOW_NS` (lib.rs L51 @ d85860a).
 pub const DEFAULT_REVERT_WINDOW_NS: u64 = 5 * 60 * 1_000_000_000;
+/// Hard cap on the resale royalty: 10%.
+pub const MAX_ROYALTY_BPS: u16 = 1_000;
 
 const GAS_VIEW: Gas = Gas::from_tgas(10);
 const GAS_TRANSFER: Gas = Gas::from_tgas(150);
@@ -124,6 +126,9 @@ pub struct Sale {
     pub sold_at_ns: U64,
     pub final_after_ns: U64,
     pub state: SaleState,
+    /// Resale cut to the Deed template creator, fixed at sale time (NEP-199 style).
+    pub royalty_account: AccountId,
+    pub royalty_yocto: U128,
 }
 
 #[derive(Deserialize)]
@@ -137,6 +142,8 @@ struct ListMsg {
 pub struct Deed {
     registry: AccountId,
     revert_window_ns: u64,
+    royalty_account: AccountId,
+    royalty_bps: u16,
     next_nonce: u64,
     next_sale_id: u64,
     activations: LookupMap<String, Activation>,
@@ -186,9 +193,17 @@ fn promise_ok() -> Option<Vec<u8>> {
 #[near]
 impl Deed {
     #[init]
-    pub fn new(registry: AccountId, revert_window_ns: Option<U64>) -> Self {
+    pub fn new(
+        registry: AccountId,
+        royalty_account: AccountId,
+        royalty_bps: u16,
+        revert_window_ns: Option<U64>,
+    ) -> Self {
+        require!(royalty_bps <= MAX_ROYALTY_BPS, "royalty_bps must be at most 1000 (10%)");
         Self {
             registry,
+            royalty_account,
+            royalty_bps,
             revert_window_ns: revert_window_ns.map(|v| v.0).unwrap_or(DEFAULT_REVERT_WINDOW_NS),
             next_nonce: 1,
             next_sale_id: 1,
@@ -413,6 +428,8 @@ impl Deed {
             sold_at_ns: U64(now),
             final_after_ns: U64(now.saturating_add(self.revert_window_ns)),
             state: SaleState::Pending,
+            royalty_account: self.royalty_account.clone(),
+            royalty_yocto: U128(paid.0 / 10_000 * self.royalty_bps as u128),
         };
         self.sales.insert(id, sale.clone());
         self.latest_sale.insert(token_id, id);
@@ -478,7 +495,15 @@ impl Deed {
             emit("sale_reverted_refunded", serde_json::json!({"sale": sale, "relisted": listing}));
         } else {
             sale.state = SaleState::Paid;
-            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(sale.price_yocto.0));
+            let royalty = sale.royalty_yocto.0;
+            let to_seller = sale.price_yocto.0 - royalty;
+            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(to_seller));
+            if royalty > 0 && sale.royalty_account != sale.seller {
+                let _ = Promise::new(sale.royalty_account.clone())
+                    .transfer(NearToken::from_yoctonear(royalty));
+            } else if royalty > 0 {
+                let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(royalty));
+            }
             emit("proceeds_paid", serde_json::json!({"sale": sale}));
         }
         self.sales.insert(sale_id.0, sale.clone());
@@ -534,6 +559,10 @@ impl Deed {
 
     pub fn get_registry(&self) -> AccountId {
         self.registry.clone()
+    }
+    /// NEP-199-style royalty info: who gets what share of a resale.
+    pub fn get_royalty(&self) -> (AccountId, u16) {
+        (self.royalty_account.clone(), self.royalty_bps)
     }
     pub fn get_revert_window_ns(&self) -> U64 {
         U64(self.revert_window_ns)

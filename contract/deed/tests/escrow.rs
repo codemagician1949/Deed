@@ -17,6 +17,8 @@ const TX_GAS: Gas = Gas::from_tgas(300);
 const CONFIG_HASH: &str = "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea";
 /// Short revert window so tests can step past it.
 const WINDOW_NS: u64 = 2_000_000_000;
+/// 2.5% to the template creator.
+const ROYALTY_BPS: u16 = 250;
 
 struct Env {
     worker: Worker<Sandbox>,
@@ -25,6 +27,7 @@ struct Env {
     seller: Account,
     buyer: Account,
     stranger: Account,
+    creator: Account,
 }
 
 fn wasm(name: &str) -> Vec<u8> {
@@ -37,11 +40,6 @@ async fn setup() -> Result<Env> {
     let registry = worker.dev_deploy(&wasm("mock_registry")).await?;
     registry.call("new").transact().await?.into_result()?;
     let deed = worker.dev_deploy(&wasm("deed")).await?;
-    deed.call("new")
-        .args_json(json!({"registry": registry.id(), "revert_window_ns": WINDOW_NS.to_string()}))
-        .transact()
-        .await?
-        .into_result()?;
     let root = worker.root_account()?;
     let mk = |n: &'static str| {
         let root = root.clone();
@@ -56,13 +54,24 @@ async fn setup() -> Result<Env> {
     let seller = mk("seller").await?;
     let buyer = mk("buyer").await?;
     let stranger = mk("stranger").await?;
+    let creator = mk("creator").await?;
+    deed.call("new")
+        .args_json(json!({
+            "registry": registry.id(),
+            "royalty_account": creator.id(),
+            "royalty_bps": ROYALTY_BPS,
+            "revert_window_ns": WINDOW_NS.to_string(),
+        }))
+        .transact()
+        .await?
+        .into_result()?;
     registry
         .call("mint")
         .args_json(json!({"token_id": NAME, "owner": seller.id()}))
         .transact()
         .await?
         .into_result()?;
-    Ok(Env { worker, registry, deed, seller, buyer, stranger })
+    Ok(Env { worker, registry, deed, seller, buyer, stranger, creator })
 }
 
 fn fails_with(res: &ExecutionFinalResult, needle: &str) -> bool {
@@ -207,11 +216,14 @@ async fn full_sale_seller_locked_out_and_paid_after_window() -> Result<()> {
     env.worker.fast_forward(10).await?;
     // Snapshot after the seller's own txs (and their gas refunds) have settled.
     let seller_before = balance(&env.seller).await?;
+    let creator_before = balance(&env.creator).await?;
     claim(&env, &env.stranger, &sale_id).await?.into_result()?; // anyone can trigger payout
     let sale: Value = env.deed.view("get_sale").args_json(json!({"sale_id": sale_id})).await?.json()?;
     assert_eq!(sale["state"], "Paid");
-    let gained = balance(&env.seller).await? - seller_before;
-    assert_eq!(gained, PRICE.as_yoctonear(), "seller receives exactly the price");
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS as u128;
+    assert_eq!(sale["royalty_yocto"], royalty.to_string());
+    assert_eq!(balance(&env.seller).await? - seller_before, PRICE.as_yoctonear() - royalty, "seller receives price minus royalty");
+    assert_eq!(balance(&env.creator).await? - creator_before, royalty, "creator receives the royalty");
 
     // C6: double claim fails.
     assert!(fails_with(&claim(&env, &env.stranger, &sale_id).await?, "already settled"));
@@ -267,13 +279,24 @@ async fn hos_revert_refunds_buyer_and_returns_listing() -> Result<()> {
     claim(&env, &env.stranger, &sale_id).await?.into_result()?;
     let sale: Value = env.deed.view("get_sale").args_json(json!({"sale_id": sale_id})).await?.json()?;
     assert_eq!(sale["state"], "Reverted");
-    assert_eq!(balance(&env.buyer).await? - buyer_before, PRICE.as_yoctonear(), "buyer refunded in full");
+    assert_eq!(balance(&env.buyer).await? - buyer_before, PRICE.as_yoctonear(), "buyer refunded in full, no royalty taken");
     assert_eq!(listing(&env).await?["seller"], env.seller.id().as_str(), "seller can relist or cancel");
 
     // Seller takes the name back.
     env.seller.call(env.deed.id(), "cancel").args_json(json!({"token_id": NAME}))
         .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
     assert_eq!(owner(&env).await?, env.seller.id().as_str());
+    Ok(())
+}
+
+#[tokio::test]
+async fn royalty_capped_at_ten_percent() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let deed = worker.dev_deploy(&wasm("deed")).await?;
+    let r = deed.call("new")
+        .args_json(json!({"registry": deed.id(), "royalty_account": deed.id(), "royalty_bps": 1001}))
+        .transact().await?;
+    assert!(fails_with(&r, "at most 1000"));
     Ok(())
 }
 
