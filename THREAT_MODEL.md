@@ -1,6 +1,6 @@
 # Deed: threat model for the transfer
 
-> Written before any code, as the `nfts` track prompt asks. Status: **draft v1, 2026-11-02, awaiting team OK.**
+> Written before any code, as the `nfts` track prompt asks. Status: **v1 approved by the team 2026-11-02** (decisions below: proceeds lock, operator-funded refunds, 24 h activation timeout).
 > Every security sentence in the README or video must map to a row here **and** to a passing check in `verify/`. Source references are to `houseofstake/tla-contracts` @ `d85860a` (see `docs/SPIKE.md`).
 
 ## What is being sold
@@ -47,7 +47,7 @@ After a sale is final (revert window closed):
 |---|---|---|---|
 | B1 | Earnings stay in the account and B gets them | Sale/Transfer rotation sweeps NEAR to the **outgoing** payout account before re-pointing it | `sweep_goes_to_seller`: balance assertions on both sides |
 | B2 | A points payout somewhere odd before selling | That's A's own money (their era). Payout is re-pointed to the new owner on rotation, so A can't redirect B's era | `payout_repointed_to_buyer` |
-| B3 | **Payments while listed** go to the escrow (listing re-points payout to E) | On receiving the name E sets `hos_set_payout_account(seller, expected_owner=E)`. The runtime takes no jobs while the owner is E, and the web page shows "listed – not serving". **VERIFY** the call path | `listed_payment_reaches_seller` |
+| B3 | **Payments while listed** go to the escrow (listing re-points payout to E) | On receiving the name E calls `registry.hos.set_payout_account(tla, name, seller)` (owner-only, 1 yocto; the registry relays to the wallet's authority-only `hos_set_payout_account`). The runtime takes no jobs while the owner is E, and the web page shows "listed – not serving" | `listed_payment_reaches_seller` |
 | B4 | A parks USDC/wNEAR in the name to block or tax the sale | The registry blocks non-venue transfers with any allow-listed FT balance (`SubAccountHoldsTokens`). E's `list` rejects names with FT balance; A must `hos_sweep_ft` first. Deed earns in NEAR only | `ft_balance_blocks_listing` |
 | B5 | A drains earnings via the runtime's grant | Grant is capped: allow-listed receivers, budget, expiry; storage reserve protected (`capabilities.rs: spending_cannot_drain_the_storage_reserve`) | `grant_budget_enforced` |
 | B6 | Front-running: A spends the balance just before listing | Allowed. It's A's money until the sale, and the title page shows the balance at listing time. Buyers price the stream and the record, not the balance | documented |
@@ -90,7 +90,8 @@ After a sale is final (revert window closed):
 - Lease expiry: a name not renewed is reclaimable. The title page shows `lease_until`.
 - Mainnet-only TLA: tests run the real WASM in a sandbox; the live demo is a small mainnet run.
 
-## Open decisions for the team
-1. The proceeds lock for C5 (pay the seller after 5 min) vs paying immediately. **Proposed: lock.**
-2. Who funds refunds (D): the runtime operator (proposed) vs a small refund reserve grant on the name.
-3. The 24 h activation timeout for jobs paid under the new owner.
+## Decisions (approved 2026-11-02)
+1. Seller proceeds are locked until the 5-min revert window closes (C5).
+2. Refunds (D) are paid by the runtime operator, not the name.
+3. Jobs paid under a new owner wait up to 24 h for activation, then become refundable.
+4. A name with an unclaimed sale can't be relisted, so "owner is the escrow at claim time" can only mean a revert.

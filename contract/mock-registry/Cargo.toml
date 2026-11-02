@@ -1,0 +1,13 @@
+[package]
+name = "mock-registry"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Test-only stand-in for registry.hos: owners, transfers, nft_transfer_call, payout, forced failures, HoS revert"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
