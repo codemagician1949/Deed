@@ -13,6 +13,14 @@ Pitch (one breath): *"On other chains an NFT points at a wallet. On NEAR, the NF
 - Built on **Top Level Accounts** (House of Stake), which the prompt points at: live and audited on mainnet, **no SDK, only 79 names rented in total (2026-11-02)** — almost nobody has built on it. Agent-themed namespaces exist: `.agi`, `.bot`, `.bots`, `.assistant`, `.agency`, `.aide`, `.ask`.
 - The panel (Kimi K3.1 Pro, GLM-5.3, GPT-6 Astra, Claude Fable on NEAR AI) ranked Deed #1 of 12 ideas (avg 7.42; GLM 8.3). Track fit 9–9.8, NEAR depth 8.5–9.3, demo 8.5–9.2. Points were lost on overclaiming, scope and "who would buy it" — v3 below fixes each (see docs/PANEL.md).
 
+## Latest panel verdict — v3 (2026-11-02): avg 7.70 (Kimi 8.3, GLM 8.2, GPT-6 7.8, Fable 6.5), #1 of 13
+The `apply_rotation` facts lifted the score (v2 7.42 → v3 7.70). To pass 8.5, the build must also fix (details in docs/PANEL.md):
+1. **Sale is not atomic** — two revertible rotations; escrow→buyer sweep pays the escrow. Build an explicit sale state machine with every failure branch, finality-gated seller payout (after the 5-min revert window), forwarding of listing-period earnings, and a test per branch.
+2. **Own an invariant** — `deed` contract must enforce something the wallet doesn't: per-job escrowed payment with refund-if-unanswered, on-chain job/receipt ledger, activation bound to `rotation_seq`.
+3. **Runtime bound to the name, not an operator** — open-source multi-tenant runtime serving whoever the chain says owns the name; buyer needs zero ops.
+4. **Not an AI wrapper** — deterministic tx analysis first (decode actions, known contracts, unlimited approvals, drain patterns), model only explains; publish accuracy on a labelled set.
+5. Real external paid calls; a second Deed with a different ledger.
+
 ## The precise claim (never say more than this)
 After a Deed is sold:
 1. **The seller's agent permissions are gone, enforced on-chain by the audited `hos-wallet`**: every ownership rotation runs `spend_grants.clear()` and removes every extension except the lease authority (docs/RESEARCH.md §1 ★). Proven by direct calls from the seller's own client in our verifier.
