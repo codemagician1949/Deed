@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 
 const STATUS: Record<ProofStatus, { label: string; icon: typeof ShieldCheck; cls: string }> = {
   proven_testnet: { label: "Proven on testnet", icon: ShieldCheck, cls: "bg-success/12 text-success" },
-  proven_sandbox: { label: "Proven in automated test", icon: FlaskConical, cls: "bg-info/12 text-info" },
+  proven_sandbox: { label: "Proven against the real wallet code", icon: FlaskConical, cls: "bg-info/12 text-info" },
   planned: { label: "Test being built", icon: CircleDashed, cls: "bg-muted text-muted-foreground" },
 }
 
@@ -40,8 +40,8 @@ export function ProofPage() {
               <div className="text-xs text-muted-foreground">attacks with a passing test today</div>
             </div>
             <div className="max-w-sm rounded-2xl border border-dashed border-border px-5 py-3 text-sm text-muted-foreground">
-              We only claim what's tested. Cards marked <span className="font-medium text-foreground">“Test being built”</span> are
-              enforced by the account's own wallet code, and our live testnet test is on its way.
+              Every test runs against the exact House of Stake code that is live on NEAR mainnet, in a private test network.
+              The same run on public testnet is next.
             </div>
           </Reveal>
         </div>

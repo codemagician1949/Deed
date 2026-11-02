@@ -702,9 +702,11 @@ name = "deed"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bs58 0.5.1",
  "near-sdk",
  "near-workspaces",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
 ]
 

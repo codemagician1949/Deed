@@ -165,15 +165,14 @@ fn emit(event: &str, data: serde_json::Value) {
     env::log_str(&format!("EVENT_JSON:{log}"));
 }
 
-/// `preflight.bot` → (`bot`, `preflight`). TLA names are exactly `label.tla`.
+/// `preflight.bot` → (`bot`, `preflight`); `preflight.deedbot.deedhq.testnet` →
+/// (`deedbot.deedhq.testnet`, `preflight`). A leased name is always one label
+/// (no dots, per the registry's `validate_name`) under its TLA account.
 pub fn split_token_id(token_id: &str) -> (AccountId, String) {
     let (label, tla) = token_id
         .split_once('.')
         .unwrap_or_else(|| env::panic_str("token id must be <name>.<tla>"));
-    require!(
-        !label.is_empty() && !tla.is_empty() && !tla.contains('.'),
-        "token id must be <name>.<tla>"
-    );
+    require!(!label.is_empty() && !tla.is_empty(), "token id must be <name>.<tla>");
     let tla_id: AccountId = tla
         .parse()
         .unwrap_or_else(|_| env::panic_str("invalid tla id"));
@@ -610,9 +609,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "token id must be <name>.<tla>")]
-    fn rejects_nested_names() {
-        split_token_id("a.b.bot");
+    fn splits_names_under_account_tlas() {
+        let (tla, label) = split_token_id("preflight.deedbot.deedhq.testnet");
+        assert_eq!(tla.as_str(), "deedbot.deedhq.testnet");
+        assert_eq!(label, "preflight");
     }
 
     #[test]

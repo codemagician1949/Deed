@@ -261,12 +261,12 @@ function FloatingChip({
   )
 }
 
-// Only attacks with a passing test today (see /proof for the full list and status).
+// Every row has a passing test against the real House of Stake wallet code (see /proof).
 const TICKER = [
+  ["Old owner's AI agent tries to spend", "spend refused by the wallet"],
+  ["Old owner tries to sign in as the name", "NOT_AN_OWNER"],
   ["Old owner tries to sell it again", "OnlyOwner"],
   ["Old owner switches the service back on", "only the current owner"],
-  ["Seller changes the price mid-purchase", "listing changed since you looked"],
-  ["Buyer underpays", "attach exactly the listed price"],
   ["Seller grabs the money before it's final", "revert window still open"],
 ]
 

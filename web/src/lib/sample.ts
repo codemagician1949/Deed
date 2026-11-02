@@ -108,10 +108,10 @@ export const SAMPLE_DEEDS: Deed[] = [
 ]
 
 export const ATTACKS: Attack[] = [
-  { id: "A1", attempt: "The old owner's AI agent tries to spend from the account", stoppedBy: "The sale wipes every agent permission. The account's own wallet code does this, not us.", error: "extension not enabled", row: "A1", status: "planned" },
-  { id: "A2", attempt: "The old owner hid a second \"co-owner\" key before selling", stoppedBy: "The same wipe removes every extra key. Only the new owner remains.", error: "extension not enabled", row: "A2", status: "planned" },
-  { id: "A3", attempt: "The old owner gives themselves a new permission", stoppedBy: "Only the current owner can hand out permissions.", error: "UNAUTHORIZED", row: "A3", status: "planned" },
-  { id: "A4", attempt: "The old owner tries to sign in as the name", stoppedBy: "Sign-in only works for someone the account lists as an owner.", error: "NOT_AN_OWNER", row: "A4", status: "planned" },
+  { id: "A1", attempt: "The old owner's AI agent tries to spend from the account", stoppedBy: "The sale wipes every agent permission. The account's own wallet code does this, not us.", error: "spend refused by the wallet", row: "A1", status: "proven_sandbox" },
+  { id: "A2", attempt: "The old owner hid a second \"co-owner\" key before selling", stoppedBy: "The same wipe removes every extra key. Only the new owner remains.", error: "co-owner removed by the wallet", row: "A2", status: "proven_sandbox" },
+  { id: "A3", attempt: "The old owner gives themselves a new permission", stoppedBy: "Only the current owner can hand out permissions.", error: "UNAUTHORIZED", row: "A3", status: "proven_sandbox" },
+  { id: "A4", attempt: "The old owner tries to sign in as the name", stoppedBy: "Sign-in only works for someone the account lists as an owner.", error: "NOT_AN_OWNER", row: "A4", status: "proven_sandbox" },
   { id: "A6", attempt: "The old owner tries to sell the name a second time", stoppedBy: "The registry only lets the current owner move it.", error: "OnlyOwner", row: "A6", status: "proven_sandbox" },
   { id: "D2", attempt: "The old owner switches the service back on", stoppedBy: "Deed checks the registry for the current owner, live, every time.", error: "only the current owner of the name can activate it", row: "D2", status: "proven_sandbox" },
   { id: "B3", attempt: "Payments made while it's for sale go missing", stoppedBy: "The escrow points earnings back at the seller the moment it's listed.", error: "—", row: "B3", status: "proven_sandbox" },
@@ -119,5 +119,6 @@ export const ATTACKS: Attack[] = [
   { id: "C2", attempt: "Someone pays less than the asking price", stoppedBy: "The escrow only accepts the exact price.", error: "attach exactly the listed price", row: "C2", status: "proven_sandbox" },
   { id: "C4", attempt: "The seller changes the price while you're paying", stoppedBy: "Your purchase is pinned to the exact listing you saw.", error: "listing changed since you looked", row: "C4", status: "proven_sandbox" },
   { id: "C5", attempt: "The sale gets reversed after the seller is paid", stoppedBy: "The seller's money unlocks only after the 5-minute safety window.", error: "revert window still open", row: "C5", status: "proven_sandbox" },
+  { id: "A7", attempt: "The old owner uses a hidden password on the account", stoppedBy: "There isn't one. The account has no keys at all; only its wallet code can act.", error: "no access keys", row: "A7", status: "proven_sandbox" },
   { id: "B4", attempt: "The seller parks tokens in the account to block the sale", stoppedBy: "The registry won't move an account holding tokens. Earnings are in NEAR only.", error: "SubAccountHoldsTokens", row: "B4", status: "proven_sandbox" },
 ]
