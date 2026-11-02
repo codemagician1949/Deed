@@ -16,7 +16,7 @@ NET="network-config testnet"
 SIGN="sign-with-legacy-keychain send"
 WASM=deploy/mainnet-wasm
 DEED_WASM=contract/target/near/deed/deed.wasm
-RPC=${RPC:-https://rpc.testnet.fastnear.com}
+RPC=${RPC:-https://rpc.testnet.near.org}
 
 COUNCIL=$ROOT                       # admin / treasury / council of the replica
 REGISTRY=registry.$ROOT
@@ -72,10 +72,10 @@ command -v jq >/dev/null || die "jq not found (brew install jq)"
 [ -f "$DEED_WASM" ] || die "missing $DEED_WASM; run contract/test.sh first"
 exists "$ROOT" || die "$ROOT does not exist on testnet"
 
-NEED=75
+NEED=65
 HAVE=$(balance_near "$ROOT")
 if ! exists "$IMPL" && [ "$HAVE" -lt "$NEED" ]; then
-  die "$ROOT has $HAVE NEAR; a fresh deploy needs about $NEED NEAR (the global wallet code alone is ~44 NEAR).
+  die "$ROOT has $HAVE NEAR; a fresh deploy needs about $NEED NEAR (the global wallet code alone is ~43.3 NEAR: 433 KB x 0.0001 NEAR/byte).
        Send testnet NEAR to $ROOT and re-run. The script is safe to re-run; it skips finished steps."
 fi
 
@@ -89,12 +89,12 @@ for pair in "tla_registry:DVMYAu7exGKWQdngmtvUDC4rvBfZzSK1kt1AkzaewsPY" "hos_ext
 done
 
 say "Accounts"
-subaccount "$REGISTRY" "9 NEAR"
-subaccount "$EXT" "4 NEAR"
-subaccount "$RECOVERY" "4 NEAR"
-subaccount "$IMPL" "46 NEAR"
-subaccount "$TLA" "3 NEAR"
-subaccount "$DEED" "4 NEAR"
+subaccount "$REGISTRY" "7.6 NEAR"
+subaccount "$EXT" "3.4 NEAR"
+subaccount "$RECOVERY" "3.2 NEAR"
+subaccount "$IMPL" "44 NEAR"
+subaccount "$TLA" "2.3 NEAR"
+subaccount "$DEED" "2.9 NEAR"
 
 say "Global wallet code at $IMPL (mainnet: impl.hos)"
 if [ "$(code_hash "$IMPL")" = "" ] || [ "$(code_hash "$IMPL")" = "11111111111111111111111111111111" ]; then

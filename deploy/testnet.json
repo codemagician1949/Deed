@@ -1,0 +1,21 @@
+{
+  "network": "testnet",
+  "rpc": "https://rpc.testnet.near.org",
+  "root": "deedhq.testnet",
+  "registry": "registry.deedhq.testnet",
+  "extension": "ext.deedhq.testnet",
+  "recovery": "rec.deedhq.testnet",
+  "walletImpl": "impl.deedhq.testnet",
+  "tla": "deedbot.deedhq.testnet",
+  "deed": "deed.deedhq.testnet",
+  "royaltyAccount": "deedhq.testnet",
+  "royaltyBps": 250,
+  "mainnetCodeHashes": {
+    "registry.hos": "DVMYAu7exGKWQdngmtvUDC4rvBfZzSK1kt1AkzaewsPY",
+    "ext.hos": "3rkMpK42jVjrqi9kukVCbUyeX1bqqAa4AJ6gvSdtL6Zz",
+    "registrar (gpub.hos)": "DavYBFdXPsa9qa6QEyiaUxodV6pax2y8Sp3XoriCNj3t",
+    "impl.hos (hos-wallet)": "6d1FsQEpwVpgxALg4kCffXX45qujTL41bQSpWEHFoQ4o",
+    "rec.hos (mpc-recovery)": "HgacdGnQfkZ68W43VuqL9uZbY5JUXL2Gt9hrTWYU3eXw"
+  },
+  "deedCodeHash": "G67XdiLHJC2qbP4n5iUyQCEZnJebxEwCMtNdY3hpFCrA"
+}
