@@ -16,7 +16,7 @@ NET="network-config testnet"
 SIGN="sign-with-legacy-keychain send"
 WASM=deploy/mainnet-wasm
 DEED_WASM=contract/target/near/deed/deed.wasm
-RPC=${RPC:-https://rpc.testnet.near.org}
+RPC=${RPC:-https://rpc.testnet.fastnear.com}
 
 COUNCIL=$ROOT                       # admin / treasury / council of the replica
 REGISTRY=registry.$ROOT

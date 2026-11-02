@@ -1,6 +1,6 @@
 {
   "network": "testnet",
-  "rpc": "https://rpc.testnet.near.org",
+  "rpc": "https://rpc.testnet.fastnear.com",
   "root": "deedhq.testnet",
   "registry": "registry.deedhq.testnet",
   "extension": "ext.deedhq.testnet",
