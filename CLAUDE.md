@@ -113,8 +113,13 @@ What it is in 2 lines; "do X → see Y" steps runnable from a clean clone (`bun 
 - Before any push: `gh api user --jq .login` must print `codemagician1949`, else `gh auth switch -h github.com -u codemagician1949`.
 - No Claude/Anthropic co-author trailers, author or committer; `git log --format='%an %ce %b' | grep -i claude` must be empty before pushing. Small descriptive commits (AI judges read history).
 
+## Decisions log
+- **2026-11-02 — Testnet only, all through (team decision).** No mainnet spend. TLA isn't deployed on testnet (`registry.hos.testnet` doesn't exist), so we deploy the House of Stake contracts ourselves on testnet from the **exact mainnet bytecode**, under team-owned testnet accounts, and the verifier prints code hashes next to mainnet's. The README says plainly: "TLA on testnet = our deployment of the audited mainnet code; not House of Stake's." Mainnet open questions (renting names) are closed.
+- **2026-11-02 — UI bar:** "astonishing", well animated (`motion`), built on shadcn/ui, and understandable by anyone: plain words first, chain jargon behind a "details" toggle.
+- **2026-11-02 — Threat model v1 approved**; `deed` contract (activation + escrow + capped royalty) done with 9 sandbox tests (`contract/test.sh`).
+
 ## Open questions for the human
 1. Which project does Deed replace for you (Q-015), or does the co-founder submit it?
-2. OK to spend a little NEAR on mainnet to rent two names (cheap long names, Standard tier) for the spike and demo?
+2. ~~Mainnet spend~~ — closed: testnet only.
 3. Team lead name/email/X for the submission; prize NEAR account.
 4. New GitHub repo name/owner (e.g. `PatchBond`-independent org).
