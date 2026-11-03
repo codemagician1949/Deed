@@ -31,7 +31,7 @@ import { cancel, claim } from "@/lib/actions"
 import type { LiveDeed } from "@/lib/live"
 import { cn } from "@/lib/utils"
 import { JobCard } from "@/components/job-card"
-import { jobsFor, type Job } from "@/lib/runtime"
+import { jobsFor, jobsSnapshot, type Job } from "@/lib/runtime"
 
 const explorerAccount = (a: string) => `https://testnet.nearblocks.io/address/${a}`
 
@@ -420,9 +420,19 @@ function ChainFacts({ deed }: { deed: LiveDeed }) {
 
 function JobsTab({ name }: { name: string }) {
   const [jobs, setJobs] = useState<Job[] | null>(null)
+  const [snapshotAt, setSnapshotAt] = useState<string | null>(null)
   const [offline, setOffline] = useState(false)
   useEffect(() => {
-    jobsFor(name).then(setJobs).catch(() => setOffline(true))
+    jobsFor(name)
+      .then(setJobs)
+      .catch(() =>
+        jobsSnapshot(name)
+          .then((s) => {
+            setJobs(s.jobs)
+            setSnapshotAt(s.takenAt)
+          })
+          .catch(() => setOffline(true)),
+      )
   }, [name])
   if (offline)
     return (
@@ -436,7 +446,13 @@ function JobsTab({ name }: { name: string }) {
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Every paid job this Deed's runtime received: who paid, under which owner it was accepted, the answer, and the enclave
-        signature check. Refunds link to their transaction.
+        signature checks. Refunds link to their transaction.
+        {snapshotAt && (
+          <span className="mt-1 block text-xs">
+            The runtime isn't reachable from here, so this is the published ledger snapshot from {dateOnly(snapshotAt)} (every payment and refund
+            still links to its transaction).
+          </span>
+        )}
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {jobs.map((j) => (

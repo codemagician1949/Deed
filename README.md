@@ -53,7 +53,7 @@ On NEAR, Top Level Accounts (House of Stake) already make the NFT **be** the acc
 | A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
 | Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
 | NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
-| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Built**, 22 tests incl. a sale in the middle of a paid job. Live on testnet: payment and owner checks, refunds (2 jobs). **Answers need a `NEARAI_API_KEY`** (not configured yet), so live jobs so far were refunded | [runtime/](runtime/) |
+| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 22 tests incl. a sale in the middle of a paid job; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
 | "Try Preflight" page: free risk flags, pay the Deed from your wallet, get the signed explanation; a Jobs tab on each Deed page | **Built** | [web/src/pages/try.tsx](web/src/pages/try.tsx) |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
@@ -133,7 +133,7 @@ cd runtime && bun install && bun test     # 22 tests: sale mid-job, replay, fail
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
 curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
 ```
-**You will see** `22 pass`, then the health JSON with `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet. Without an API key a paid job is accepted, then marked `refund_due`, and `bun run refunds --yes` pays it back from the operator account.
+**You will see** `22 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
 
 ### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
@@ -278,6 +278,17 @@ Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UT
 | C5 | After the window, anyone triggers payment | ok | PASS | [`BuMALMxS…`](https://testnet.nearblocks.io/txns/BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp) |
 | G5 | The seller received exactly price minus 2.5% royalty (0.975 NEAR) | ok | PASS | view call / balance check |
 
+### Live Preflight jobs (NEAR testnet)
+
+Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by the runtime ([ledger snapshot](verify/preflight-jobs-testnet.json); also on the Deed page's **Jobs answered** tab). "attested" = the recovered signer is listed in NEAR AI's attestation report for `z-ai/glm-5.3-flash` (Intel TDX quote + NVIDIA evidence).
+
+| Payment | Transaction asked about (high-risk flags) | Accepted under | Result | Enclave signature |
+|---|---|---|---|---|
+| [`A1HG8Q8e…`](https://testnet.nearblocks.io/txns/A1HG8Q8en19mEquvX4ABVMUUhoYXDeAfgnFRppzNqjfp) | moves_assets, value | v2 under `kofi.deedhq.testnet` | refunded ([`BQnX4x4H…`](https://testnet.nearblocks.io/txns/BQnX4x4HAz6Qo9wNuc2K8Ru6V2E5a4JGxwaE4vgYuyqA)): no API key yet | — |
+| [`G9CCLRZP…`](https://testnet.nearblocks.io/txns/G9CCLRZPtasZUVK1f2hdrhdMhK4A8b6uMCn2jzU7dQ5G) | full_access_key | v3 under `kofi.deedhq.testnet` | refunded ([`FQeA19mC…`](https://testnet.nearblocks.io/txns/FQeA19mCU87x9GLxXxyRturT8sGLJDTm64ZHnMdkiYrM)): no API key yet | — |
+| [`ELo6ZUbG…`](https://testnet.nearblocks.io/txns/ELo6ZUbGs9QejdnCiyWqVtd6XJfMh557ziWXxM8ZRYtm) | unlimited_approval | v3 under `kofi.deedhq.testnet` | answered: **DO NOT SIGN** | hashes ✓ · signer ✓ |
+| [`CNffZWAF…`](https://testnet.nearblocks.io/txns/CNffZWAFngGdasRtVULuWAa8pa9N1xJjVK8xKzYTvYu6) | full_access_key | v3 under `kofi.deedhq.testnet` | answered: **CHECK FIRST** | hashes ✓ · signer ✓ · attested ✓ |
+
 ---
 
 ## Contract reference
@@ -311,7 +322,7 @@ Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UT
 
 **Job rules** ([src/jobs.ts](runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). A job is accepted only if the payment is final, went to this name, came from the caller, covers the activated price and is under 24 h old, **and** a fresh read shows the current registry owner signed an activation that names this runtime and this exact config fingerprint. If the name is sold mid-job, the job is still delivered once, and both owners are recorded. A payment made before the latest ownership change is refunded. One made after it but before the new owner switches on is held, then served when they do (refunded after 24 h). Failures refund; RPC trouble refuses.
 
-**Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer. Both checks are stored with the job and shown on the page.
+**Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer, then checks that signer is listed in NEAR AI's attestation report for the model (`/v1/attestation/report`, Intel TDX + NVIDIA evidence; cached 10 min). All three checks are stored with the job and shown on the page.
 
 **Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`8c5e8df1…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
 
@@ -416,7 +427,7 @@ Contract and sale: three layers, each closer to reality (the runtime adds a four
 Listed so reviewers can tell built from planned:
 
 1. **NEP-641 sign-in for the console**: today the console opens for the wallet account that the registry lists as owner; the next step is resolving a signed NEP-641 authorization through the name's `w_resolve_auth` (already proven to reject the old owner on testnet).
-2. **A NEAR AI API key for the hosted runtime**, so live jobs are answered instead of refunded, and a hosted runtime + web app for judges.
+2. **Hosting** the runtime and web app for judges (today both run locally; the Jobs tab falls back to the published ledger snapshot).
 3. **A recompute script** that rebuilds every number on a title page from chain data (the web app already builds its history from chain data, with tx links).
 
 ---

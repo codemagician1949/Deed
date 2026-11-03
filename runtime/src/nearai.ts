@@ -6,6 +6,28 @@ import type { ProposedTx, RiskFlag } from "./risk"
 import { checkSignature } from "./tee"
 
 
+// Attested enclave signing addresses per model, refreshed every 10 minutes. This is evidence about
+// NEAR AI's enclaves, not about ownership, so a short cache is fine (owner reads are never cached).
+const attestCache = new Map<string, { at: number; addresses: Set<string> }>()
+async function attestedAddresses(model: string): Promise<Set<string>> {
+  const hit = attestCache.get(model)
+  if (hit && Date.now() - hit.at < 600_000) return hit.addresses
+  const r = await fetch(`${CONFIG.nearAiBase}/attestation/report?model=${encodeURIComponent(model)}&signing_algo=ecdsa`, {
+    headers: { authorization: `Bearer ${CONFIG.nearAiKey}` },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!r.ok) throw new Error(`attestation HTTP ${r.status}`)
+  const report = (await r.json()) as { model_attestations?: { model_name?: string; signing_address?: string }[] }
+  const addresses = new Set(
+    (report.model_attestations ?? [])
+      .filter((a) => !a.model_name || a.model_name === model)
+      .map((a) => (a.signing_address ?? "").toLowerCase())
+      .filter(Boolean),
+  )
+  attestCache.set(model, { at: Date.now(), addresses })
+  return addresses
+}
+
 export const nearAi: Inference = {
   async explain(tx: ProposedTx, flags: RiskFlag[]): Promise<Answer> {
     if (!CONFIG.nearAiKey) throw new Error("NEARAI_API_KEY is not set on this runtime")
@@ -50,6 +72,11 @@ export const nearAi: Inference = {
           signingAddress: signature.signing_address,
         })
       : null
+    if (check && signature) {
+      check.attested = await attestedAddresses(SERVICE.model)
+        .then((set) => set.has(signature!.signing_address.toLowerCase()))
+        .catch(() => null)
+    }
     return { explanation, model: json.model ?? SERVICE.model, chatId: json.id, requestBody, responseBody, signature, check }
   },
 }

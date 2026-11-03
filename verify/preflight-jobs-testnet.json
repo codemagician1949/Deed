@@ -1,0 +1,193 @@
+{
+  "note": "Snapshot of the Preflight runtime's job ledger on NEAR testnet (runtime/data/jobs.json). Every job links to its payment tx; refunds to their refund tx.",
+  "taken_at": "2026-11-03T11:01:54.256241Z",
+  "jobs": [
+    {
+      "id": "CNffZWAFngGdasRtVULuWAa8pa9N1xJjVK8xKzYTvYu6",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793703679683324039",
+      "status": "served",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 3,
+      "request": {
+        "receiver_id": "maya.deedhq.testnet",
+        "actions": [
+          {
+            "type": "AddKey",
+            "params": {
+              "publicKey": "ed25519:8hSHprDq2StXwMtNd43wDTXQYsjXcD4MJTXQYsjXcD4M",
+              "accessKey": {
+                "permission": "FullAccess"
+              }
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "full_access_key",
+          "severity": "high",
+          "message": "Adds a FULL-ACCESS key: whoever holds it can take everything in the account."
+        }
+      ],
+      "createdAt": "2026-11-03T11:01:27.607Z",
+      "updatedAt": "2026-11-03T11:01:35.575Z",
+      "answer": {
+        "explanation": "This transaction adds a new access key to your account \"maya.deedhq.testnet\" \u2014 think of it as creating a new master key that can control the account. Warning: this is a FULL-ACCESS key, meaning whoever holds it can send your funds, remove other keys, or even delete the entire account. The recipient of this key is whoever controls the listed public key, and nothing is being transferred right now \u2014 the danger is what they can do later. Only sign if you fully trust the person or app you're giving this key to (for example, adding your own device or wallet). If you're not certain who requested this, stop and verify first.\n\nVerdict: CHECK FIRST",
+        "model": "z-ai/glm-5.3-flash",
+        "chatId": "044eaff0e47d4a7ba6bbb8442ccc33ee",
+        "requestBody": "{\"model\":\"z-ai/glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Preflight, a careful assistant that explains a NEAR blockchain transaction to the person about to sign it.\\nWrite for someone who is not technical. In 3 to 6 short sentences: say what the transaction does, who receives what,\\nand what could go wrong. You are given risk flags computed by deterministic code: mention every \\\"high\\\" flag and never\\ncontradict a flag. Do not invent facts that are not in the transaction. End with exactly one line:\\n\\\"Verdict: SAFE TO SIGN\\\", \\\"Verdict: CHECK FIRST\\\" or \\\"Verdict: DO NOT SIGN\\\".\"},{\"role\":\"user\",\"content\":\"{\\\"transaction\\\":{\\\"receiver_id\\\":\\\"maya.deedhq.testnet\\\",\\\"actions\\\":[{\\\"type\\\":\\\"AddKey\\\",\\\"params\\\":{\\\"publicKey\\\":\\\"ed25519:8hSHprDq2StXwMtNd43wDTXQYsjXcD4MJTXQYsjXcD4M\\\",\\\"accessKey\\\":{\\\"permission\\\":\\\"FullAccess\\\"}}}]},\\\"risk_flags\\\":[{\\\"code\\\":\\\"full_access_key\\\",\\\"severity\\\":\\\"high\\\",\\\"message\\\":\\\"Adds a FULL-ACCESS key: whoever holds it can take everything in the account.\\\"}]}\"}],\"max_tokens\":700,\"temperature\":0.2}",
+        "responseBody": "{\"id\":\"044eaff0e47d4a7ba6bbb8442ccc33ee\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"This transaction adds a new access key to your account \\\"maya.deedhq.testnet\\\" \u2014 think of it as creating a new master key that can control the account. Warning: this is a FULL-ACCESS key, meaning whoever holds it can send your funds, remove other keys, or even delete the entire account. The recipient of this key is whoever controls the listed public key, and nothing is being transferred right now \u2014 the danger is what they can do later. Only sign if you fully trust the person or app you're giving this key to (for example, adding your own device or wallet). If you're not certain who requested this, stop and verify first.\\n\\nVerdict: CHECK FIRST\",\"reasoning_content\":\"The transaction adds a full-access key to account maya.deedhq.testnet. There's a high risk flag: full_access_key. I must mention it, not contradict it. Explain in 3-6 short sentences for non-technical person. End with verdict line. Given a full access key is being added \u2014 this could be legitimate (adding a device) but full access means whoever holds it can do everything including deleting the account. Verdict: CHECK FIRST seems appropriate (not necessarily DO NOT SIGN since adding a key could be legitimate, but the high flag warrants caution). The guidance: mention every high flag. Verdict choice: \\\"CHECK FIRST\\\" is reasonable.\"},\"finish_reason\":\"stop\",\"logprobs\":null,\"matched_stop\":154827}],\"model\":\"z-ai/glm-5.3-flash\",\"created\":1793703689,\"usage\":{\"prompt_tokens\":243,\"total_tokens\":521,\"completion_tokens\":278,\"prompt_tokens_details\":null,\"reasoning_tokens\":137,\"completion_tokens_details\":{\"reasoning_tokens\":137}}}",
+        "signature": {
+          "text": "z-ai/glm-5.3-flash:d628137bea8b139ed016151244b1e22955ce60f2a8236c5822ffb3a3a72e73c5:fd2c3802f12e4ba357f7910c6c04f50725e4b15aa05ab84cbab51a0c3c371b29",
+          "signature": "0x3de3923fe43de3b8ab1797590ccd05c9c95edc5fec3446200734eb0c60d225914e72bacef50b7830920b1639c0beaf64a49295e352ba2996e3161dc10b4946fe1c",
+          "signing_address": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signing_algo": "ecdsa",
+          "signature_kind": "provider_tee"
+        },
+        "check": {
+          "hashesMatch": true,
+          "recovered": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signerMatches": true,
+          "attested": true
+        }
+      },
+      "ownerAtDelivery": "kofi.deedhq.testnet"
+    },
+    {
+      "id": "ELo6ZUbGs9QejdnCiyWqVtd6XJfMh557ziWXxM8ZRYtm",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793703603330155792",
+      "status": "served",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 3,
+      "request": {
+        "receiver_id": "usdc.fakes.testnet",
+        "actions": [
+          {
+            "type": "FunctionCall",
+            "params": {
+              "methodName": "ft_approve",
+              "args": {
+                "spender_id": "dex-promo.testnet",
+                "amount": "340282366920938463463374607431768211455"
+              },
+              "gas": "30000000000000",
+              "deposit": "1"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "unlimited_approval",
+          "severity": "high",
+          "message": "Calls ft_approve with an unlimited amount: the receiver could move all of that token."
+        }
+      ],
+      "createdAt": "2026-11-03T11:00:10.411Z",
+      "updatedAt": "2026-11-03T11:00:32.095Z",
+      "answer": {
+        "explanation": "This transaction gives the account **dex-promo.testnet** permission to spend your USDC-style tokens (from the contract `usdc.fakes.testnet`) on your behalf \u2014 you're not sending tokens directly, just granting access. The approval amount is set to the maximum possible number, which our checks flagged as **high risk: an unlimited approval**, meaning the spender could move your entire token balance. The token contract also receives a tiny 1-yoctoNEAR deposit to process this. The danger: once signed, dex-promo.testnet could drain all of these tokens at any time, without asking you again, until you manually revoke it. If you actually intend to use this spender, it's much safer to approve only the specific amount needed rather than unlimited.\n\nVerdict: DO NOT SIGN",
+        "model": "z-ai/glm-5.3-flash",
+        "chatId": "8232d557f790481aa470fc8aff650446",
+        "requestBody": "{\"model\":\"z-ai/glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Preflight, a careful assistant that explains a NEAR blockchain transaction to the person about to sign it.\\nWrite for someone who is not technical. In 3 to 6 short sentences: say what the transaction does, who receives what,\\nand what could go wrong. You are given risk flags computed by deterministic code: mention every \\\"high\\\" flag and never\\ncontradict a flag. Do not invent facts that are not in the transaction. End with exactly one line:\\n\\\"Verdict: SAFE TO SIGN\\\", \\\"Verdict: CHECK FIRST\\\" or \\\"Verdict: DO NOT SIGN\\\".\"},{\"role\":\"user\",\"content\":\"{\\\"transaction\\\":{\\\"receiver_id\\\":\\\"usdc.fakes.testnet\\\",\\\"actions\\\":[{\\\"type\\\":\\\"FunctionCall\\\",\\\"params\\\":{\\\"methodName\\\":\\\"ft_approve\\\",\\\"args\\\":{\\\"spender_id\\\":\\\"dex-promo.testnet\\\",\\\"amount\\\":\\\"340282366920938463463374607431768211455\\\"},\\\"gas\\\":\\\"30000000000000\\\",\\\"deposit\\\":\\\"1\\\"}}]},\\\"risk_flags\\\":[{\\\"code\\\":\\\"unlimited_approval\\\",\\\"severity\\\":\\\"high\\\",\\\"message\\\":\\\"Calls ft_approve with an unlimited amount: the receiver could move all of that token.\\\"}]}\"}],\"max_tokens\":700,\"temperature\":0.2}",
+        "responseBody": "{\"id\":\"8232d557f790481aa470fc8aff650446\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"This transaction gives the account **dex-promo.testnet** permission to spend your USDC-style tokens (from the contract `usdc.fakes.testnet`) on your behalf \u2014 you're not sending tokens directly, just granting access. The approval amount is set to the maximum possible number, which our checks flagged as **high risk: an unlimited approval**, meaning the spender could move your entire token balance. The token contract also receives a tiny 1-yoctoNEAR deposit to process this. The danger: once signed, dex-promo.testnet could drain all of these tokens at any time, without asking you again, until you manually revoke it. If you actually intend to use this spender, it's much safer to approve only the specific amount needed rather than unlimited.\\n\\nVerdict: DO NOT SIGN\",\"reasoning_content\":\"Let me analyze this transaction:\\n\\n- Receiver: usdc.fakes.testnet (a fake USDC token contract on testnet)\\n- Action: ft_approve with spender_id dex-promo.testnet\\n- Amount: 340282366920938463463374607431768211455 \u2014 this is 2^256 - 1, the max uint256, meaning unlimited approval\\n- Risk flag: unlimited_approval, severity high\\n\\nI need to explain in 3-6 short sentences, non-technical:\\n- What the transaction does: grants dex-promo.testnet permission to spend your fake USDC tokens, with an unlimited amount\\n- Who receives what: dex-promo.testnet receives spending permission over your tokens; the token contract gets 1 yoctoNEAR deposit\\n- What could go wrong: the spender could drain all your tokens at any time, forever, until revoked\\n- Mention the high flag\\n- End with verdict line\\n\\nGiven the unlimited approval to a \\\"promo\\\" account on a \\\"fakes\\\" token, verdict should be DO NOT SIGN or CHECK FIRST. Unlimited approval is high severity \u2014 typically that warrants at least CHECK FIRST. Given the spender is named \\\"dex-promo.testnet\\\" and token is \\\"usdc.fakes.testnet\\\" (fake tokens on testnet), it's testnet so lower real value, but I shouldn't invent facts. The flag is high. Unlimited approvals to unknown spenders are a classic drain vector. I'd say DO NOT SIGN is justified given unlimited approval \u2014 but the guidance says mention every high flag and never contradict. The verdict choice: unlimited approval is dangerous; recommend limiting the amount. I'll go with DO NOT SIGN since unlimited approval to a promo spender is a well-known scam pattern. Actually, CHECK FIRST might be more appropriate if it could be legitimate (e.g., DEX requiring approval). But \\\"dex-promo.testnet\\\" sounds promotional/suspicious. The safest advice: don't sign an unlimited approval; if needed, sign a limited one. I'll say DO NOT SIGN.\\n\\nHmm, but testnet fake tokens \u2014 no real value. Still, I shouldn't invent facts. The transaction is on testnet (names end in .testnet). I can note it appears to be a testnet token. But the risk pattern remains. I'll go with DO NOT SIGN because unlimited approvals should never be signed blindly; suggest a capped approval instead.\\n\\nWrite 3-6 short sentences, plain language.\"},\"finish_reason\":\"stop\",\"logprobs\":null,\"matched_stop\":154827}],\"model\":\"z-ai/glm-5.3-flash\",\"created\":1793703611,\"usage\":{\"prompt_tokens\":250,\"total_tokens\":930,\"completion_tokens\":680,\"prompt_tokens_details\":null,\"reasoning_tokens\":517,\"completion_tokens_details\":{\"reasoning_tokens\":517}}}",
+        "signature": {
+          "text": "z-ai/glm-5.3-flash:39116b2d1cc1e9fc7695565d89996188962a71d0d5cdea7d3699a8cfec612767:7be5afd0f963cf5e8b79f7163ba1785a7c4b04176b72e2b7cd4623114830ae36",
+          "signature": "0x50803c3c7cf2c485a0424ef5722270b5d7ae8e11d3f20fd3e5bb9a8cc182779e5604046aa5d6593448df7c160061f0bc027cb639a4cebf49ec9074fde97b1a261b",
+          "signing_address": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signing_algo": "ecdsa",
+          "signature_kind": "provider_tee"
+        },
+        "check": {
+          "hashesMatch": true,
+          "recovered": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signerMatches": true
+        }
+      },
+      "ownerAtDelivery": "kofi.deedhq.testnet"
+    },
+    {
+      "id": "G9CCLRZPtasZUVK1f2hdrhdMhK4A8b6uMCn2jzU7dQ5G",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793703298098821841",
+      "status": "refunded",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 3,
+      "request": {
+        "receiver_id": "me.testnet",
+        "actions": [
+          {
+            "type": "AddKey",
+            "params": {
+              "accessKey": {
+                "permission": "FullAccess"
+              }
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "full_access_key",
+          "severity": "high",
+          "message": "Adds a FULL-ACCESS key: whoever holds it can take everything in the account."
+        }
+      ],
+      "createdAt": "2026-11-03T10:55:06.223Z",
+      "updatedAt": "2026-11-03T10:55:13.932Z",
+      "reason": "The AI answer failed (NEARAI_API_KEY is not set on this runtime); the operator refunds this payment.",
+      "refundTx": "FQeA19mCU87x9GLxXxyRturT8sGLJDTm64ZHnMdkiYrM"
+    },
+    {
+      "id": "A1HG8Q8en19mEquvX4ABVMUUhoYXDeAfgnFRppzNqjfp",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793703047579258881",
+      "status": "refunded",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 2,
+      "request": {
+        "receiver_id": "wrap.testnet",
+        "actions": [
+          {
+            "type": "FunctionCall",
+            "params": {
+              "methodName": "ft_transfer",
+              "args": {
+                "receiver_id": "bob.testnet",
+                "amount": "1000000000000000000000000"
+              },
+              "gas": "30000000000000",
+              "deposit": "1"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "moves_assets",
+          "severity": "info",
+          "message": "Moves tokens or NFTs out via ft_transfer to bob.testnet."
+        },
+        {
+          "code": "value",
+          "severity": "info",
+          "message": "Sends 0 NEAR in total."
+        }
+      ],
+      "createdAt": "2026-11-03T10:50:55.664Z",
+      "updatedAt": "2026-11-03T10:51:15.848Z",
+      "reason": "The AI answer failed (NEARAI_API_KEY is not set on this runtime); the operator refunds this payment.",
+      "refundTx": "BQnX4x4HAz6Qo9wNuc2K8Ru6V2E5a4JGxwaE4vgYuyqA"
+    }
+  ]
+}

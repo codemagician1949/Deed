@@ -27,7 +27,7 @@ export interface Job {
     model: string
     chatId: string
     signature: { text: string; signature: string; signing_address: string; signing_algo: string } | null
-    check: { hashesMatch: boolean; recovered: string | null; signerMatches: boolean } | null
+    check: { hashesMatch: boolean; recovered: string | null; signerMatches: boolean; attested?: boolean | null } | null
   }
   reason?: string
   refundTx?: string
@@ -52,6 +52,12 @@ export const riskPreview = (request: ProposedTx) =>
 export const submitJob = (input: { name: string; payment_tx: string; sender: string; request: ProposedTx }) =>
   call<{ error?: string; job?: Job }>("/v1/jobs", { method: "POST", body: JSON.stringify(input) })
 export const jobsFor = (name: string) => call<{ jobs: Job[] }>(`/v1/jobs?name=${encodeURIComponent(name)}`).then((r) => r.body.jobs)
+
+/** Published snapshot of the live ledger (verify/preflight-jobs-testnet.json), used when the runtime isn't reachable. */
+export const jobsSnapshot = (name: string) =>
+  fetch("/preflight-jobs.json")
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no snapshot"))))
+    .then((s: { taken_at: string; jobs: Job[] }) => ({ takenAt: s.taken_at, jobs: s.jobs.filter((j) => j.name === name) }))
 
 export const EXAMPLES: { label: string; tx: ProposedTx }[] = [
   {

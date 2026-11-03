@@ -11,6 +11,26 @@ const SEV: Record<RiskFlag["severity"], string> = {
   info: "bg-muted text-muted-foreground ring-border",
 }
 
+/** Renders **bold** and `code` from model output as React elements (never as raw HTML). */
+function Inline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.startsWith("**") && p.endsWith("**") ? (
+          <strong key={i}>{p.slice(2, -2)}</strong>
+        ) : p.startsWith("`") && p.endsWith("`") ? (
+          <code key={i} className="rounded bg-muted px-1 font-mono text-[0.9em]">
+            {p.slice(1, -1)}
+          </code>
+        ) : (
+          p
+        ),
+      )}
+    </>
+  )
+}
+
 export function Flags({ flags }: { flags: RiskFlag[] }) {
   if (!flags.length) return <p className="text-sm text-muted-foreground">No risk flags.</p>
   return (
@@ -57,7 +77,11 @@ export function JobCard({ job }: { job: Job }) {
           {near(Number(BigInt(job.amountYocto)) / 1e24)} from {job.payer} · {when(job.createdAt)}
         </span>
       </div>
-      {body && <p className="text-sm leading-relaxed whitespace-pre-line">{body}</p>}
+      {body && (
+        <p className="text-sm leading-relaxed whitespace-pre-line">
+          <Inline text={body} />
+        </p>
+      )}
       {verdict && (
         <div
           className={cn(
@@ -98,6 +122,9 @@ export function JobCard({ job }: { job: Job }) {
             <ul className="space-y-0.5 text-muted-foreground">
               <li>{sig.hashesMatch ? "✓" : "✗"} signature covers the exact question and answer bytes</li>
               <li>{sig.signerMatches ? "✓" : "✗"} signer {job.answer.signature?.signing_address} recovered from the signature</li>
+              {sig.attested !== undefined && sig.attested !== null && (
+                <li>{sig.attested ? "✓" : "✗"} signer is listed in NEAR AI's attestation report for this model (Intel TDX + NVIDIA evidence)</li>
+              )}
             </ul>
           ) : (
             <p className="text-muted-foreground">Signature not available for this answer.</p>

@@ -38,6 +38,8 @@ export interface SignatureCheck {
   recovered: string | null
   /** Recovered address equals the address NEAR AI reports for the enclave. */
   signerMatches: boolean
+  /** The signer appears in the model's attestation report (Intel TDX + NVIDIA evidence); null = not checked. */
+  attested?: boolean | null
 }
 
 export function checkSignature(input: {
