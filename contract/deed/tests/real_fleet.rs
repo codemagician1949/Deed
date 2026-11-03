@@ -286,3 +286,43 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     println!("\nAll checks ran against mainnet bytecode: {:?}", MAINNET.iter().map(|(n, _)| *n).collect::<Vec<_>>());
     Ok(())
 }
+
+/// THREAT_MODEL C7 on real House of Stake bytecode: after a sale, the buyer sends the name back to the
+/// escrow with a plain transfer and waits out the window, hoping the claim treats it as a revert and
+/// refunds them. The seller must still be paid, and the buyer must be able to take the name back.
+#[tokio::test]
+async fn buyer_returning_the_name_gets_no_refund_on_real_bytecode() -> Result<()> {
+    let w = world().await?;
+    let r = w.kofi.call(w.registry.id(), "nft_transfer_call").args_json(json!({
+        "receiver_id": w.deed.id(), "token_id": w.name,
+        "msg": json!({"price_yocto": PRICE.as_yoctonear().to_string()}).to_string(),
+    })).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
+    if !r.receipt_failures().is_empty() { bail!("listing failed: {:?}", r.receipt_failures()); }
+    let listing: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
+    w.maya.call(w.deed.id(), "buy").args_json(json!({
+        "token_id": w.name, "expected_price": PRICE.as_yoctonear().to_string(), "listing_nonce": listing["nonce"],
+    })).deposit(PRICE).gas(TX_GAS).transact().await?.into_result()?;
+    assert_eq!(owner_of(&w).await?, w.maya.id().as_str());
+
+    // Maya sends it straight back to the escrow (no nft_on_transfer, no listing).
+    let back = w.maya.call(w.registry.id(), "transfer_sub_account")
+        .args_json(json!({"tla_id": w.tla, "name": "preflight", "new_owner": w.deed.id()}))
+        .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
+    if !back.receipt_failures().is_empty() { bail!("return failed: {:?}", back.receipt_failures()); }
+    assert_eq!(owner_of(&w).await?, w.deed.id().as_str());
+
+    let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
+    w.worker.fast_forward(10).await?;
+    let kofi_before = balance(&w.worker, w.kofi.id()).await?;
+    let maya_before = balance(&w.worker, w.maya.id()).await?;
+    w.customer.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
+    assert_eq!(balance(&w.worker, w.kofi.id()).await? - kofi_before, PRICE.as_yoctonear() - royalty, "seller paid");
+    assert_eq!(balance(&w.worker, w.maya.id()).await?, maya_before, "no refund to the buyer");
+    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
+    assert_eq!(l["seller"], w.maya.id().as_str(), "the name is recorded as Maya's");
+    w.maya.call(w.deed.id(), "cancel").args_json(json!({"token_id": w.name})).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
+    assert_eq!(owner_of(&w).await?, w.maya.id().as_str(), "Maya takes the name back");
+    println!("PASS C7   buyer returning the name gets no refund; seller paid; buyer recovers the name (real bytecode)");
+    Ok(())
+}

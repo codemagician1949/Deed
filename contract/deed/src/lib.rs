@@ -13,8 +13,8 @@
 //!    the escrow already cleared the seller's grants and swept NEAR to the seller. `buy` (and
 //!    `cancel`) first point payout back at the seller, then move the name, so anything paid in
 //!    while listed is swept to the seller by that rotation (B3). `buy` pays the exact price and
-//!    refunds the buyer if the transfer fails (C1). Seller proceeds unlock only after House of
-//!    Stake's 5-min revert window (C5).
+//!    refunds the buyer if the transfer fails (C1). Seller proceeds unlock after a 5-min window (C5),
+//!    kept as insurance: on the deployed House of Stake code a completed transfer can't be undone.
 //!
 //!    `nft_on_transfer` only records state: the registry gives it a fixed 25 Tgas, too little
 //!    for any cross-contract work (a failed receiver call makes the registry return the name).
@@ -116,7 +116,7 @@ pub enum SaleState {
     Claiming,
     /// Seller paid.
     Paid,
-    /// House of Stake reverted the transfer inside the window; buyer refunded.
+    /// Unused since v2 (kept so older stored sales still deserialize).
     Reverted,
 }
 
@@ -428,9 +428,8 @@ impl Deed {
 
     // ===== proceeds =====
 
-    /// Anyone may call once the revert window has passed. Pays the seller, or, if
-    /// House of Stake reverted the transfer back to this contract, refunds the buyer
-    /// and reopens the listing for the seller (THREAT_MODEL C5).
+    /// Anyone may call once the safety window has passed. Always pays the seller (and royalty);
+    /// if the name is back in this escrow unlisted, it is recorded as the buyer's listing (THREAT_MODEL C5).
     pub fn claim_proceeds(&mut self, sale_id: U64) -> Promise {
         let mut sale = self
             .sales
@@ -467,33 +466,34 @@ impl Deed {
             emit("claim_retry", serde_json::json!({"sale_id": sale_id, "reason": "registry read failed"}));
             return SaleState::Pending;
         };
-        // Relisting is blocked while this sale is unclaimed, so the escrow can only own
-        // the name now if the transfer to the buyer was reverted.
-        if owner == env::current_account_id() {
-            sale.state = SaleState::Reverted;
-            let _ = Promise::new(sale.buyer.clone()).transfer(NearToken::from_yoctonear(sale.price_yocto.0));
+        // The sale completed when the name reached the buyer, so the seller is always paid.
+        // (On the deployed House of Stake code nothing can undo a completed transfer_sub_account:
+        // `Revert` is only used when an nft_transfer_call receiver refuses the token. The window above
+        // is kept as insurance against future registry changes.)
+        sale.state = SaleState::Paid;
+        let royalty = sale.royalty_yocto.0;
+        let to_seller = sale.price_yocto.0 - royalty;
+        let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(to_seller));
+        if royalty > 0 && sale.royalty_account != sale.seller {
+            let _ = Promise::new(sale.royalty_account.clone()).transfer(NearToken::from_yoctonear(royalty));
+        } else if royalty > 0 {
+            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(royalty));
+        }
+        emit("proceeds_paid", serde_json::json!({"sale": sale}));
+        // If the name is sitting in this escrow unlisted (the buyer sent it back with a plain transfer,
+        // or a future registry reverted it), it belongs to the buyer: record it as the buyer's listing at
+        // the sale price so they can take it back with `cancel`. Nobody ends up with both the money and the name.
+        if owner == env::current_account_id() && !self.listings.contains_key(&sale.token_id) {
             let listing = Listing {
                 token_id: sale.token_id.clone(),
-                seller: sale.seller.clone(),
+                seller: sale.buyer.clone(),
                 price_yocto: sale.price_yocto,
                 nonce: U64(self.take_nonce()),
                 listed_at_ns: U64(env::block_timestamp()),
                 state: ListingState::Active,
             };
             self.listings.insert(sale.token_id.clone(), listing.clone());
-            emit("sale_reverted_refunded", serde_json::json!({"sale": sale, "relisted": listing}));
-        } else {
-            sale.state = SaleState::Paid;
-            let royalty = sale.royalty_yocto.0;
-            let to_seller = sale.price_yocto.0 - royalty;
-            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(to_seller));
-            if royalty > 0 && sale.royalty_account != sale.seller {
-                let _ = Promise::new(sale.royalty_account.clone())
-                    .transfer(NearToken::from_yoctonear(royalty));
-            } else if royalty > 0 {
-                let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(royalty));
-            }
-            emit("proceeds_paid", serde_json::json!({"sale": sale}));
+            emit("returned_to_buyer_listing", serde_json::json!({"sale_id": sale_id, "listing": listing}));
         }
         self.sales.insert(sale_id.0, sale.clone());
         sale.state

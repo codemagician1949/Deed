@@ -262,30 +262,56 @@ async fn forced_transfer_failure_refunds_buyer() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn hos_revert_refunds_buyer_and_returns_listing() -> Result<()> {
-    // THREAT_MODEL C5: House of Stake reverts the sale inside its window.
-    let env = setup().await?;
-    let nonce = list_ok(&env).await?;
-    buy(&env, &env.buyer, PRICE, PRICE, &nonce).await?.into_result()?;
+async fn sale_then_claim_with_name_back_in_escrow(env: &Env, send_back: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    let nonce = list_ok(env).await?;
+    buy(env, &env.buyer, PRICE, PRICE, &nonce).await?.into_result()?;
     let sale: Value = env.deed.view("get_latest_sale").args_json(json!({"token_id": NAME})).await?.json()?;
     let sale_id = sale["id"].as_str().unwrap().to_string();
-    env.registry.call("hos_revert").args_json(json!({"token_id": NAME})).transact().await?.into_result()?;
-    assert_eq!(owner(&env).await?, env.deed.id().as_str());
+    send_back.await?;
+    assert_eq!(owner(env).await?, env.deed.id().as_str());
 
-    let buyer_before = balance(&env.buyer).await?;
     env.worker.fast_forward(10).await?;
-    claim(&env, &env.stranger, &sale_id).await?.into_result()?;
+    let seller_before = balance(&env.seller).await?;
+    let buyer_before = balance(&env.buyer).await?;
+    claim(env, &env.stranger, &sale_id).await?.into_result()?;
     let sale: Value = env.deed.view("get_sale").args_json(json!({"sale_id": sale_id})).await?.json()?;
-    assert_eq!(sale["state"], "Reverted");
-    assert_eq!(balance(&env.buyer).await? - buyer_before, PRICE.as_yoctonear(), "buyer refunded in full, no royalty taken");
-    assert_eq!(listing(&env).await?["seller"], env.seller.id().as_str(), "seller can relist or cancel");
+    assert_eq!(sale["state"], "Paid", "the sale completed, so the seller is paid");
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS as u128;
+    assert_eq!(balance(&env.seller).await? - seller_before, PRICE.as_yoctonear() - royalty);
+    assert_eq!(balance(&env.buyer).await?, buyer_before, "no refund: the buyer can't get both the money and the name");
+    assert_eq!(listing(env).await?["seller"], env.buyer.id().as_str(), "the name is recorded as the buyer's");
 
-    // Seller takes the name back.
-    env.seller.call(env.deed.id(), "cancel").args_json(json!({"token_id": NAME}))
+    // The buyer takes the name back.
+    env.buyer.call(env.deed.id(), "cancel").args_json(json!({"token_id": NAME}))
         .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
-    assert_eq!(owner(&env).await?, env.seller.id().as_str());
+    assert_eq!(owner(env).await?, env.buyer.id().as_str());
     Ok(())
+}
+
+#[tokio::test]
+async fn name_reverted_to_escrow_after_sale_seller_still_paid_buyer_recovers_name() -> Result<()> {
+    // THREAT_MODEL C5: if a (future) registry undid the transfer, nobody loses: seller paid, buyer keeps the name.
+    let env = setup().await?;
+    let reg = env.registry.clone();
+    sale_then_claim_with_name_back_in_escrow(&env, async move {
+        reg.call("hos_revert").args_json(json!({"token_id": NAME})).transact().await?.into_result()?;
+        Ok(())
+    })
+    .await
+}
+
+#[tokio::test]
+async fn buyer_cannot_return_the_name_for_a_refund() -> Result<()> {
+    // THREAT_MODEL C7: buyer uses the Deed for the window, sends it back to the escrow, hopes for a refund.
+    let env = setup().await?;
+    let (buyer, reg, deed) = (env.buyer.clone(), env.registry.id().clone(), env.deed.id().clone());
+    sale_then_claim_with_name_back_in_escrow(&env, async move {
+        buyer.call(&reg, "transfer_sub_account")
+            .args_json(json!({"tla_id": "bot", "name": "preflight", "new_owner": deed}))
+            .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
+        Ok(())
+    })
+    .await
 }
 
 #[tokio::test]
