@@ -28,6 +28,8 @@ export const CONFIG = {
   nearAiKey: process.env.NEARAI_API_KEY ?? "",
   port: Number(process.env.PORT ?? 8787),
   dataFile: process.env.JOBS_FILE ?? join(here, "..", "data", "jobs.json"),
+  /** On first boot with an empty volume, start from this published ledger snapshot (keeps replay protection). */
+  seedJobs: process.env.SEED_JOBS ?? "",
 }
 
 // The public service config. Its sha256 is the config_hash owners sign at activation; the runtime

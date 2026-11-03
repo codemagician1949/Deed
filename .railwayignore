@@ -1,0 +1,8 @@
+# Railway builds only the Preflight runtime (runtime/Dockerfile needs deploy/, verify/, runtime/).
+web/
+contract/
+docs/
+.env
+.env.*
+runtime/node_modules/
+runtime/data/

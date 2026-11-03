@@ -11,6 +11,16 @@ import { nearAi } from "./nearai"
 import { riskFlags } from "./risk"
 import { fileStore } from "./store"
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname } from "node:path"
+
+if (!existsSync(CONFIG.dataFile) && CONFIG.seedJobs && existsSync(CONFIG.seedJobs)) {
+  mkdirSync(dirname(CONFIG.dataFile), { recursive: true })
+  const snap = JSON.parse(readFileSync(CONFIG.seedJobs, "utf8")) as { jobs: Job[] }
+  writeFileSync(CONFIG.dataFile, JSON.stringify(snap.jobs, null, 2))
+  console.log(`Seeded ledger with ${snap.jobs.length} jobs from ${CONFIG.seedJobs}`)
+}
+
 const deps: Deps = {
   chain,
   inference: nearAi,
@@ -78,6 +88,28 @@ const server = Bun.serve({
         .filter((j) => !name || j.name === name)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       return json(200, { jobs: list.map(pub) })
+    }
+    const rf = url.pathname.match(/^\/v1\/jobs\/([1-9A-HJ-NP-Za-km-z]{43,44})\/refund$/)
+    if (rf && req.method === "POST") {
+      // Record a refund. No secret needed: the server checks the refund on chain itself
+      // (sent by this runtime's operator account, to the payer, for at least the amount paid).
+      const job = deps.store.get(rf[1])
+      if (!job) return json(404, { error: "No job for that payment." })
+      if (job.status !== "refund_due") return json(409, { error: `Job is ${job.status}, not refund_due.` })
+      let refundTx = ""
+      try {
+        refundTx = String(((await req.json()) as { refund_tx?: string }).refund_tx ?? "")
+      } catch {
+        /* fall through */
+      }
+      if (!/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(refundTx)) return json(400, { error: "Body must be {refund_tx}." })
+      const p = await chain.payment(refundTx, CONFIG.runtimeId).catch(() => null)
+      if (!p || !p.success) return json(402, { error: `Refund tx not found as a successful transfer from ${CONFIG.runtimeId}.` })
+      if (p.receiver !== job.payer || p.depositYocto < BigInt(job.amountYocto))
+        return json(402, { error: `Refund must send at least ${job.amountYocto} yocto to ${job.payer}.` })
+      if (deps.store.list().some((j) => j.refundTx === refundTx)) return json(409, { error: "That refund tx is already used for another job." })
+      deps.store.put({ ...job, status: "refunded", refundTx, updatedAt: new Date().toISOString() })
+      return json(200, { job: deps.store.get(job.id) })
     }
     const m = url.pathname.match(/^\/v1\/jobs\/([1-9A-HJ-NP-Za-km-z]{43,44})$/)
     if (m && req.method === "GET") {

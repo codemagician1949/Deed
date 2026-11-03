@@ -2,6 +2,8 @@
 
 **Deed turns a NEAR name into an AI service you can own, prove and sell.** The name (for example `preflight.deedbot.deedhq.testnet`) is at the same time an NEP-171 NFT, a real NEAR account with its own wallet, and the identity of a paid service. When a Deed is sold, the wallet's own audited code wipes every permission the seller or the seller's AI agents had, and settles the seller's earnings to them in the same step. Deed adds the activation registry, the sale escrow, the public track record and a verifier that attacks every sale from the seller's side.
 
+- **Live app:** https://deed-near.vercel.app (NEAR testnet; connect a testnet wallet to buy or ask Preflight)
+- **Live Preflight runtime:** https://preflight-production-8802.up.railway.app/v1/health ([API](#the-preflight-service-runtime))
 - **Track:** `nfts` (NFTs That Do Something), NEAR HACKATHON 2026
 - **Network:** NEAR **testnet** (contracts deployed and live, see [Live deployment](#live-deployment-near-testnet))
 - **License:** MIT ([LICENSE](LICENSE))
@@ -128,6 +130,9 @@ Open http://localhost:5173. Every page reads **NEAR testnet** directly (RPC for 
 Production build: `bun run build` (type-check + Vite build, output in `web/dist`).
 
 ### 4. Run the Preflight service
+
+(Or use the hosted one: `curl https://preflight-production-8802.up.railway.app/v1/health`. It runs [runtime/Dockerfile](runtime/Dockerfile) on Railway with a persistent volume for the job ledger, so replay protection survives redeploys. It holds no NEAR key: refunds are paid from the operator's machine with `RUNTIME_URL=<host> bun run refunds --yes`, and the server records a refund only after verifying the refund transaction on chain.)
+
 ```bash
 cd runtime && bun install && bun test     # 22 tests: sale mid-job, replay, fail-closed, payment checks, TEE signature check, risk flags
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
