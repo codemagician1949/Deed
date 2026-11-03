@@ -1,5 +1,7 @@
 # Deed
 
+[![ci](https://github.com/codemagician1949/Deed/actions/workflows/ci.yml/badge.svg)](https://github.com/codemagician1949/Deed/actions/workflows/ci.yml)
+
 **Deed makes a NEAR name a sellable, paid AI service.** The name (for example `preflight.deedbot.deedhq.testnet`) is at the same time an NEP-171 NFT, a real NEAR account with its own wallet, and the identity of a paid service. Customers pay the name; when it's sold, House of Stake's wallet code (audited by Valhalla Security per their repo; Deed's own code is not audited) wipes every permission the seller or their AI agents had and pays the seller what the name earned, and Deed's escrow pays the price. **What transfers:** the name, its wallet and incoming payments, its public record, and the right to choose which runtime serves it. **What doesn't:** compute, API keys or a hosted runtime; see [What a buyer gets](#what-a-buyer-gets-and-doesnt). Deed adds the activation registry, the sale escrow, the Preflight runtime and a verifier that attacks a sale from the seller's side. Every guarantee, whose code enforces it and where it's proven: [docs/INVARIANTS.md](docs/INVARIANTS.md).
 
 - **Live app:** https://deed-near.vercel.app (NEAR testnet; connect a testnet wallet to buy or ask Preflight)
