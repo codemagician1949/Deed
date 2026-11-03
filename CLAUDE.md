@@ -1,7 +1,7 @@
 # Deed — NEAR HACKATHON project memory (track: `nfts`)
 
 > Read this first, then `docs/RESEARCH.md` (verified facts with file/line references), `docs/PANEL.md` (why Deed was chosen and what the judges' models criticised), `docs/HACKATHON.md` (official rules — re-read the live https://nearhackathon.com/HACKATHON.md before submitting), `docs/TRACK-nfts.md` (the organizers' own prompt for this track).
-> Folder created 2026-11-02. Local git only — no remote. Deadline **2026-11-14 23:59 UTC** (submissions open 1 Nov).
+> Folder created 2026-11-02. Remote: github.com/codemagician1949/Deed (public); pushing to it is authorized, following §Git identity. Deadline **2026-11-14 23:59 UTC** (submissions open 1 Nov).
 
 ## One line
 **Deed turns a NEAR name into a working AI service you can own, prove and sell — and when it's sold, NEAR's own wallet contract wipes the seller's agent permissions and pays them out in the same step.**
@@ -103,15 +103,17 @@ What it is in 2 lines; "do X → see Y" steps runnable from a clean clone (`bun 
 - Public repo by 14 Nov; X post with video from the team lead tagging @NEARProtocol #NEARHackathon; one submission per project, not editable; hosted demo a plus (keep up to 18–25 Nov).
 
 ## Hard rules for agents
-- Never, without the human's explicit confirmation **at the time**: push, create/make public a repo, post on X, **rent names or spend on mainnet**, sign mainnet transactions, deploy to mainnet, submit.
+- Never, without the human's explicit confirmation **at the time**: create/make public a repo, post on X, **rent names or spend on mainnet**, sign mainnet transactions, deploy to mainnet, submit.
 - Never create or invent the team's NEAR mainnet account. Never print/commit secrets (`.env` git-ignored; `NEARAI_API_KEY` there). Never commit the submission payload.
 - Never overclaim: every security sentence in README/video must map to a row in the threat model with a passing verifier check.
 - User-facing errors say what went wrong and what to do next.
 
-## Git identity
-- Repo-local (already set): `codemagician1949 <278717673+codemagician1949@users.noreply.github.com>`. Don't touch the global config.
-- Before any push: `gh api user --jq .login` must print `codemagician1949`, else `gh auth switch -h github.com -u codemagician1949`.
-- No Claude/Anthropic co-author trailers, author or committer; `git log --format='%an %ce %b' | grep -i claude` must be empty before pushing. Small descriptive commits (AI judges read history).
+## Git identity and pushing (set by the team 2026-11-03)
+- Remote: `origin` = https://github.com/codemagician1949/Deed (public). The **only** contributor is `codemagician1949`.
+- Repo-local identity (already set): `codemagician1949 <278717673+codemagician1949@users.noreply.github.com>` (GitHub no-reply). Don't touch the global config; never commit a personal email.
+- **Before every push**: run `gh api user --jq .login`; if it isn't `codemagician1949`, run `gh auth switch -h github.com -u codemagician1949` first. (This machine has many gh accounts logged in.)
+- **Before every push**: `git log --format='%an %ae %cn %ce %b' | grep -iE "claude|anthropic"` must print nothing, and every author/committer must be codemagician1949. No Co-Authored-By trailers.
+- Small descriptive commits (AI judges read history).
 
 ## Decisions log
 - **2026-11-02 — Testnet only, all through (team decision).** No mainnet spend. TLA isn't deployed on testnet (`registry.hos.testnet` doesn't exist), so we deploy the House of Stake contracts ourselves on testnet from the **exact mainnet bytecode**, under team-owned testnet accounts, and the verifier prints code hashes next to mainnet's. The README says plainly: "TLA on testnet = our deployment of the audited mainnet code; not House of Stake's." Mainnet open questions (renting names) are closed.

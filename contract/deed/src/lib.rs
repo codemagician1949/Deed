@@ -10,10 +10,14 @@
 //!    current owner, so a seller's old activation is dead after a sale (THREAT_MODEL D2).
 //! 2. **Escrow sale**: the seller lists with `nft_transfer_call` (one tx, price in `msg`).
 //!    The escrow owns the name while it's listed (TLA has no approvals). The rotation into
-//!    the escrow already cleared the seller's grants and swept NEAR to the seller; the escrow
-//!    then points payout back at the seller (B3). `buy` pays the exact price, the escrow
-//!    transfers the name, and refunds the buyer if that fails (C1). Seller proceeds unlock only
-//!    after House of Stake's 5-min revert window (C5).
+//!    the escrow already cleared the seller's grants and swept NEAR to the seller. `buy` (and
+//!    `cancel`) first point payout back at the seller, then move the name, so anything paid in
+//!    while listed is swept to the seller by that rotation (B3). `buy` pays the exact price and
+//!    refunds the buyer if the transfer fails (C1). Seller proceeds unlock only after House of
+//!    Stake's 5-min revert window (C5).
+//!
+//!    `nft_on_transfer` only records state: the registry gives it a fixed 25 Tgas, too little
+//!    for any cross-contract work (a failed receiver call makes the registry return the name).
 
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
@@ -31,8 +35,9 @@ pub const DEFAULT_REVERT_WINDOW_NS: u64 = 5 * 60 * 1_000_000_000;
 pub const MAX_ROYALTY_BPS: u16 = 1_000;
 
 const GAS_VIEW: Gas = Gas::from_tgas(10);
-const GAS_TRANSFER: Gas = Gas::from_tgas(150);
-const GAS_SET_PAYOUT: Gas = Gas::from_tgas(40);
+const GAS_TRANSFER: Gas = Gas::from_tgas(120);
+/// registry.set_payout_account → ext.set_payout → wallet (registry reserves 30 Tgas for its leg).
+const GAS_SET_PAYOUT: Gas = Gas::from_tgas(50);
 const GAS_CALLBACK: Gas = Gas::from_tgas(20);
 /// What `buy`/`cancel` need attached: the registry transfer chain + our callback + margin.
 pub const GAS_REQUIRED_FOR_TRANSFER: Gas = Gas::from_tgas(200);
@@ -324,7 +329,7 @@ impl Deed {
                 return PromiseOrValue::Value(true);
             }
         }
-        let (tla_id, label) = split_token_id(&token_id);
+        split_token_id(&token_id);
         let listing = Listing {
             token_id: token_id.clone(),
             seller: previous_owner_id.clone(),
@@ -341,27 +346,7 @@ impl Deed {
             "listed",
             serde_json::json!({"listing": listing, "activation_dropped": dropped.is_some()}),
         );
-        // THREAT_MODEL B3: anything paid in while listed must sweep to the seller, not us.
-        let _ = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(ONE_YOCTO)
-            .with_static_gas(GAS_SET_PAYOUT)
-            .set_payout_account(tla_id, label, previous_owner_id.clone())
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_CALLBACK)
-                    .on_payout_set(token_id, previous_owner_id),
-            );
         PromiseOrValue::Value(false)
-    }
-
-    #[private]
-    pub fn on_payout_set(&mut self, token_id: String, payout_account: AccountId) -> bool {
-        let ok = promise_ok().is_some();
-        emit(
-            if ok { "payout_repointed" } else { "payout_repoint_failed" },
-            serde_json::json!({"token_id": token_id, "payout_account": payout_account}),
-        );
-        ok
     }
 
     // ===== buy =====
@@ -389,10 +374,15 @@ impl Deed {
         listing.state = ListingState::Settling { buyer: buyer.clone() };
         self.listings.insert(token_id.clone(), listing.clone());
         let (tla_id, label) = split_token_id(&token_id);
-        ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(ONE_YOCTO)
-            .with_static_gas(GAS_TRANSFER)
-            .transfer_sub_account(tla_id, label, buyer.clone())
+        // B3: point payout at the seller first, so the sale rotation sweeps any NEAR paid in
+        // while the name was listed to the seller (not to this escrow).
+        self.payout_to(&tla_id, &label, &listing.seller)
+            .then(
+                ext_registry::ext(self.registry.clone())
+                    .with_attached_deposit(ONE_YOCTO)
+                    .with_static_gas(GAS_TRANSFER)
+                    .transfer_sub_account(tla_id, label, buyer.clone()),
+            )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_CALLBACK)
@@ -529,10 +519,13 @@ impl Deed {
         listing.state = ListingState::Cancelling;
         self.listings.insert(token_id.clone(), listing.clone());
         let (tla_id, label) = split_token_id(&token_id);
-        ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(ONE_YOCTO)
-            .with_static_gas(GAS_TRANSFER)
-            .transfer_sub_account(tla_id, label, listing.seller.clone())
+        self.payout_to(&tla_id, &label, &listing.seller)
+            .then(
+                ext_registry::ext(self.registry.clone())
+                    .with_attached_deposit(ONE_YOCTO)
+                    .with_static_gas(GAS_TRANSFER)
+                    .transfer_sub_account(tla_id, label, listing.seller.clone()),
+            )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_CALLBACK)
@@ -588,6 +581,13 @@ impl Deed {
             .get(&token_id)
             .and_then(|id| self.sales.get(id))
             .cloned()
+    }
+
+    fn payout_to(&self, tla_id: &AccountId, label: &str, to: &AccountId) -> Promise {
+        ext_registry::ext(self.registry.clone())
+            .with_attached_deposit(ONE_YOCTO)
+            .with_static_gas(GAS_SET_PAYOUT)
+            .set_payout_account(tla_id.clone(), label.to_string(), to.clone())
     }
 
     fn take_nonce(&mut self) -> u64 {

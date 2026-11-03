@@ -4,6 +4,7 @@ import { CircleDashed, FlaskConical, Play, ShieldCheck, ShieldX } from "lucide-r
 import { Button } from "@/components/ui/button"
 import { Aurora } from "@/components/bits"
 import { Page, Reveal, Stagger, StaggerItem, ease } from "@/components/motion"
+import { LiveRun } from "@/components/live-run"
 import { ATTACKS } from "@/lib/sample"
 import type { Attack, ProofStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -47,7 +48,16 @@ export function ProofPage() {
         </div>
       </section>
 
+      <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
+        <Reveal>
+          <LiveRun />
+        </Reveal>
+      </section>
+
       <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
+        <Reveal className="mb-6">
+          <h2 className="font-heading text-4xl">Every attack, one by one</h2>
+        </Reveal>
         <Stagger className="grid gap-4 md:grid-cols-2">
           {ATTACKS.map((a) => (
             <StaggerItem key={a.id}>

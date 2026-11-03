@@ -177,8 +177,7 @@ async fn full_sale_seller_locked_out_and_paid_after_window() -> Result<()> {
     activate(&env, &env.seller, 1).await?.into_result()?;
     let nonce = list_ok(&env).await?;
 
-    // B3: payout pointed back at the seller while the escrow holds the name.
-    assert_eq!(entry(&env).await?["payout"], env.seller.id().as_str(), "listed payments must sweep to the seller");
+    // While listed, the rotation pointed payout at the escrow; buy() re-points it to the seller first (B3, checked via sweeps below).
     // D2: the seller's activation is gone as soon as it's listed.
     let a: Value = env.deed.view("get_activation").args_json(json!({"token_id": NAME})).await?.json()?;
     assert!(a.is_null(), "activation must be dropped on listing");
@@ -189,7 +188,7 @@ async fn full_sale_seller_locked_out_and_paid_after_window() -> Result<()> {
     assert_eq!(owner(&env).await?, env.buyer.id().as_str());
     // B2: payout now points at the buyer.
     assert_eq!(entry(&env).await?["payout"], env.buyer.id().as_str());
-    // B1: the rotation into escrow swept to the seller's payout; the sale rotation swept to the seller again (payout was re-pointed).
+    // B1/B3: the rotation into escrow swept to the seller; buy() re-pointed payout to the seller before the sale rotation, so that sweep (money paid in while listed) went to the seller too.
     let sweeps: Value = env.registry.view("get_sweeps").await?.json()?;
     let to: Vec<&str> = sweeps.as_array().unwrap().iter().map(|s| s["to"].as_str().unwrap()).collect();
     assert_eq!(to, vec![env.seller.id().as_str(), env.seller.id().as_str()], "every sweep goes to the seller");

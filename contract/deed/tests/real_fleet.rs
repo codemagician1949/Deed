@@ -13,6 +13,8 @@ use near_workspaces::{Account, AccountId, Contract, Worker};
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Testnet/mainnet per-transaction cap. The sandbox allows more, which once hid a gas bug.
+const TX_GAS: Gas = Gas::from_tgas(300);
 const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
 const GLOBAL_CODE_COST_PER_BYTE: u128 = 100_000_000_000_000_000_000;
 const PRICE: NearToken = NearToken::from_near(40);
@@ -98,7 +100,7 @@ async fn world() -> Result<World> {
     relay.call(deployer.id(), "gd_deploy")
         .args_json(json!({"code": near_sdk::json_types::Base64VecU8::from(wallet.clone())}))
         .deposit(NearToken::from_yoctonear(wallet.len() as u128 * GLOBAL_CODE_COST_PER_BYTE))
-        .max_gas().transact().await?.into_result()?;
+        .gas(TX_GAS).transact().await?.into_result()?;
 
     let registrar = tla_acc.deploy(&mainnet_wasm("registrar")).await?.into_result()?;
     registrar.call("new").args_json(json!({"config": {
@@ -111,7 +113,7 @@ async fn world() -> Result<World> {
     ext.call("new").args_json(json!({
         "admin": council.id(), "registry": registry_acc.id(), "recovery": rec.id(),
         "treasury": council.id(), "council": council.id(),
-    })).max_gas().transact().await?.into_result()?;
+    })).gas(TX_GAS).transact().await?.into_result()?;
 
     // Recovery (mainnet: rec.hos). Rotations notify it, so it must exist; we never run a recovery.
     let watcher = |_: u8| near_workspaces::types::SecretKey::from_random(near_workspaces::types::KeyType::ED25519).public_key();
@@ -119,26 +121,26 @@ async fn world() -> Result<World> {
     recovery.call("new").args_json(json!({
         "owner": council.id(), "signer": council.id(), "transfer_authority": ext_acc.id(),
         "watchers": [watcher(1), watcher(2)], "threshold": 2,
-    })).max_gas().transact().await?.into_result()?;
+    })).gas(TX_GAS).transact().await?.into_result()?;
 
     let registry = registry_acc.deploy(&mainnet_wasm("tla_registry")).await?.into_result()?;
     registry.call("new").args_json(json!({
         "admin": council.id(), "hos_extension": ext_acc.id(), "grace_period_ns": "1209600000000000",
         "treasury": council.id(), "council": council.id(), "lease_term_ns": null,
-    })).max_gas().transact().await?.into_result()?;
+    })).gas(TX_GAS).transact().await?.into_result()?;
     let tla = tla_acc.id().clone();
     for (m, args) in [
         ("admin_set_initial_rate", json!({"rate": "100000000"})),
         ("register_tla", json!({"tla_id": tla, "tla_type": "Open", "premium_category": "Standard", "licensee": null})),
         ("activate_open_tla", json!({"tla_id": tla})),
     ] {
-        council.call(registry.id(), m).args_json(args).deposit(ONE_YOCTO).max_gas().transact().await?.into_result()?;
+        council.call(registry.id(), m).args_json(args).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
     }
     // The registrar refuses wallets funded below its min_balance (0.1 NEAR); raise the creation deposit to match.
     let mut fee: Value = registry.view("get_fee_config").await?.json()?;
     fee["account_creation_deposit_yocto"] = json!(NearToken::from_millinear(200).as_yoctonear().to_string());
     council.call(registry.id(), "update_fee_config").args_json(json!({"config": fee}))
-        .deposit(ONE_YOCTO).max_gas().transact().await?.into_result()?;
+        .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
 
     let deed = sub(&root, "deed", 20).await?.deploy(&std::fs::read("../target/near/deed/deed.wasm")?).await?.into_result()?;
     deed.call("new").args_json(json!({
@@ -157,7 +159,7 @@ async fn world() -> Result<World> {
     let total: u128 = price["total_yocto"].as_str().unwrap().parse()?;
     let r = kofi.call(registry.id(), "rent_sub_account").args_json(json!({"tla_id": tla, "name": "preflight"}))
         .deposit(NearToken::from_yoctonear(total + NearToken::from_millinear(100).as_yoctonear()))
-        .max_gas().transact().await?;
+        .gas(TX_GAS).transact().await?;
     if !r.receipt_failures().is_empty() { bail!("rent failed: {:?}", r.receipt_failures()); }
     let name: AccountId = format!("preflight.{tla}").parse()?;
     for _ in 0..20 {
@@ -207,7 +209,7 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
         "token_id": w.name, "runtime_id": w.agent.id(),
         "config_hash": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
         "price_yocto": "50000000000000000000000", "version": 1,
-    })).max_gas().transact().await?.into_result()?;
+    })).gas(TX_GAS).transact().await?.into_result()?;
 
     // Baselines: everything works while Kofi owns it.
     let tenth = NearToken::from_millinear(100).as_yoctonear();
@@ -223,20 +225,23 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     let r = w.kofi.call(w.registry.id(), "nft_transfer_call").args_json(json!({
         "receiver_id": w.deed.id(), "token_id": w.name,
         "msg": json!({"price_yocto": PRICE.as_yoctonear().to_string()}).to_string(),
-    })).deposit(ONE_YOCTO).max_gas().transact().await?;
+    })).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
     if !r.receipt_failures().is_empty() { bail!("listing failed: {:?}", r.receipt_failures()); }
     report("list", owner_of(&w).await? == w.deed.id().as_str(), "escrow owns the name while it is listed");
     let swept = balance(&w.worker, w.kofi.id()).await?.saturating_sub(kofi_before);
     report("B1", swept >= EARNINGS.as_yoctonear() - tenth, &format!("Kofi's earnings swept to Kofi at listing ({} yocto)", swept));
-    let payout: String = w.worker.view(&w.name, "hos_payout_account").await?.json()?;
-    report("B3", payout == w.kofi.id().as_str(), "payout points back at Kofi while listed");
+    // A customer pays while the name is listed (owned by the escrow).
+    w.customer.transfer_near(&w.name, NearToken::from_near(1)).await?.into_result()?;
+    let kofi_before_sale = balance(&w.worker, w.kofi.id()).await?;
 
     // --- Maya buys (rotation #2).
     let listing: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
     w.maya.call(w.deed.id(), "buy").args_json(json!({
         "token_id": w.name, "expected_price": PRICE.as_yoctonear().to_string(), "listing_nonce": listing["nonce"],
-    })).deposit(PRICE).max_gas().transact().await?.into_result()?;
+    })).deposit(PRICE).gas(TX_GAS).transact().await?.into_result()?;
     report("G5", owner_of(&w).await? == w.maya.id().as_str(), "Maya owns the name");
+    let listed_income = balance(&w.worker, w.kofi.id()).await?.saturating_sub(kofi_before_sale);
+    report("B3", listed_income >= NearToken::from_millinear(990).as_yoctonear(), &format!("money paid in while listed went to Kofi at the sale ({listed_income} yocto)"));
 
     // --- Kofi's side attacks. Each must fail on-chain.
     report("A1", exec(&w, &w.agent, transfer_req(w.kofi.id(), tenth)).await?.is_failure(), "Kofi's agent cannot spend after the sale");
@@ -251,7 +256,7 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     report("A4", resolve_auth(&w, w.maya.id()).await?, "Maya can sign in as the name");
     let resell = w.kofi.call(w.registry.id(), "transfer_sub_account")
         .args_json(json!({"tla_id": w.tla, "name": "preflight", "new_owner": w.agent.id()}))
-        .deposit(ONE_YOCTO).max_gas().transact().await?;
+        .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
     report("A6", resell.is_failure(), "Kofi cannot sell the name again");
     let keys = w.worker.view_access_keys(&w.name).await?;
     report("A7", keys.is_empty(), "the name has no access keys anyone could sign with");
@@ -259,7 +264,7 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
         "token_id": w.name, "runtime_id": w.agent.id(),
         "config_hash": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
         "price_yocto": "1", "version": 9,
-    })).max_gas().transact().await?;
+    })).gas(TX_GAS).transact().await?;
     report("D2", failed_with(&reactivate, "only the current owner"), "Kofi cannot switch the service back on");
     let status: Value = w.worker.view(&w.name, "hos_agent_status").args_json(json!({"extension": w.agent.id()})).await?.json()?;
     report("G1", status["extension_enabled"] == false && status["grant"].is_null(), "agent extension and grant are gone (hos_agent_status)");
@@ -269,12 +274,12 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
         "token_id": w.name, "runtime_id": w.agent.id(),
         "config_hash": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
         "price_yocto": "50000000000000000000000", "version": 2,
-    })).max_gas().transact().await?.into_result()?;
+    })).gas(TX_GAS).transact().await?.into_result()?;
     let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
     w.worker.fast_forward(10).await?;
     let before = balance(&w.worker, w.kofi.id()).await?;
     let creator_before = balance(&w.worker, w.council.id()).await?;
-    w.maya.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).max_gas().transact().await?.into_result()?;
+    w.maya.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
     let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
     report("G5", balance(&w.worker, w.kofi.id()).await? - before == PRICE.as_yoctonear() - royalty, "Kofi receives the price minus royalty");
     report("G5", balance(&w.worker, w.council.id()).await? - creator_before == royalty, "template creator receives the royalty");
