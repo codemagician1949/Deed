@@ -426,5 +426,5 @@ Listed so reviewers can tell built from planned:
 ## Team and other submissions
 
 - GitHub: [codemagician1949](https://github.com/codemagician1949)
-- **Other projects by team members in this hackathon (Q-015):** _TODO before submission: the team confirms the list here._
+- **Other projects by team members in this hackathon (Q-015):** none. Deed stands on its own: it is this team's only submission.
 - Deed shares no code, accounts or servers with any other project.

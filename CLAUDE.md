@@ -121,7 +121,7 @@ What it is in 2 lines; "do X → see Y" steps runnable from a clean clone (`bun 
 - **2026-11-02 — Threat model v1 approved**; `deed` contract (activation + escrow + capped royalty) done with 9 sandbox tests (`contract/test.sh`).
 
 ## Open questions for the human
-1. Which project does Deed replace for you (Q-015), or does the co-founder submit it?
+1. ~~Q-015~~ — answered 2026-11-03: "Deed stands on its own" (README: no other submissions by this team).
 2. ~~Mainnet spend~~ — closed: testnet only.
 3. Team lead name/email/X for the submission; prize NEAR account.
 4. New GitHub repo name/owner (e.g. `PatchBond`-independent org).
