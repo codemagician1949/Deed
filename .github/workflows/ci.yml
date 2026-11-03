@@ -17,6 +17,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: contract
+      - name: System libraries for cargo-near (libudev for its Ledger support)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
       - name: cargo-near 0.22.0
         run: cargo install cargo-near --version 0.22.0 --locked
       - name: Vendored mainnet bytecode matches recorded hashes
