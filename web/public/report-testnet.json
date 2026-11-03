@@ -12,7 +12,8 @@
       "verdict": "PASS",
       "what": "The seller adds their AI agent as an extension",
       "tx": "CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "setup",
@@ -21,7 +22,8 @@
       "verdict": "PASS",
       "what": "The seller adds a second co-owner (a hidden back door)",
       "tx": "2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "setup",
@@ -30,7 +32,8 @@
       "verdict": "PASS",
       "what": "The seller grants their agent a capped spend (0.1 NEAR, to the seller only)",
       "tx": "2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "earn",
@@ -39,7 +42,8 @@
       "verdict": "PASS",
       "what": "A customer pays 0.1 NEAR into the name",
       "tx": "Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "pre",
@@ -48,7 +52,8 @@
       "verdict": "PASS",
       "what": "The seller's agent spends within its grant",
       "tx": "1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "pre",
@@ -57,7 +62,8 @@
       "verdict": "PASS",
       "what": "The seller can sign in as the name (NEP-641)",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "view"
     },
     {
       "row": "A5",
@@ -66,7 +72,8 @@
       "verdict": "PASS",
       "what": "The seller's agent tries to sign in as the name",
       "tx": null,
-      "error": "panicked: a spend grantee cannot authorise as an owner"
+      "error": "panicked: a spend grantee cannot authorise as an owner",
+      "kind": "view"
     },
     {
       "row": "list",
@@ -75,7 +82,8 @@
       "verdict": "PASS",
       "what": "The seller lists: the name moves into the escrow",
       "tx": "BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "B1",
@@ -84,7 +92,8 @@
       "verdict": "PASS",
       "what": "The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees)",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     },
     {
       "row": "earn",
@@ -93,7 +102,8 @@
       "verdict": "PASS",
       "what": "A customer pays 0.1 NEAR into the name while it is listed",
       "tx": "EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "buy",
@@ -102,7 +112,8 @@
       "verdict": "PASS",
       "what": "The buyer pays exactly the price; the escrow hands them the name",
       "tx": "EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "G5",
@@ -111,7 +122,8 @@
       "verdict": "PASS",
       "what": "Registry says the buyer (kofi.deedhq.testnet) owns the name",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     },
     {
       "row": "B3",
@@ -120,7 +132,8 @@
       "verdict": "PASS",
       "what": "Money paid in while listed reached the seller at the sale (+0.1016 NEAR)",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     },
     {
       "row": "A1",
@@ -128,8 +141,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller's agent tries to spend",
-      "tx": null,
-      "error": "panicked: extension 'maya-agent.deedhq.testnet' is not enabled"
+      "tx": "HxNQgNef9XyLeq6Wi4rmTz4tXwiFgid697tW7a6Z6u9F",
+      "error": "panicked: extension 'maya-agent.deedhq.testnet' is not enabled",
+      "kind": "tx",
+      "signer": "maya-agent.deedhq.testnet",
+      "method": "w_execute_extension"
     },
     {
       "row": "A2",
@@ -137,8 +153,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller's hidden co-owner tries to move money",
-      "tx": null,
-      "error": "panicked: extension 'maya-partner.deedhq.testnet' is not enabled"
+      "tx": "5rAnst8XaY5w9ZLP2M7ym2gS141SVcAYfNK5XnPgkC9o",
+      "error": "panicked: extension 'maya-partner.deedhq.testnet' is not enabled",
+      "kind": "tx",
+      "signer": "maya-partner.deedhq.testnet",
+      "method": "w_execute_extension"
     },
     {
       "row": "A2",
@@ -146,8 +165,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller tries to move money themselves",
-      "tx": null,
-      "error": "panicked: extension 'maya.deedhq.testnet' is not enabled"
+      "tx": "89D4CpB6nXxGK7aQkm799oTfg4134fjqn2feUJjMmLTK",
+      "error": "panicked: extension 'maya.deedhq.testnet' is not enabled",
+      "kind": "tx",
+      "signer": "maya.deedhq.testnet",
+      "method": "w_execute_extension"
     },
     {
       "row": "A3",
@@ -155,8 +177,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller tries to re-grant their agent",
-      "tx": null,
-      "error": "panicked: only the owner may perform this operation"
+      "tx": "5swvNdijTS51fyYop4ZEAL1zvpEpgePkBpyN4EU5a3ze",
+      "error": "panicked: only the owner may perform this operation",
+      "kind": "tx",
+      "signer": "maya.deedhq.testnet",
+      "method": "hos_grant_spend"
     },
     {
       "row": "A4",
@@ -165,7 +190,8 @@
       "verdict": "PASS",
       "what": "The seller tries to sign in as the name",
       "tx": null,
-      "error": "panicked: named account is not an owner of this account"
+      "error": "panicked: named account is not an owner of this account",
+      "kind": "view"
     },
     {
       "row": "A4",
@@ -174,7 +200,8 @@
       "verdict": "PASS",
       "what": "The buyer can sign in as the name",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "view"
     },
     {
       "row": "A6",
@@ -182,8 +209,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller tries to sell the name again",
-      "tx": null,
-      "error": "panicked: {\"code\":\"only_owner\"}"
+      "tx": "7KmgmY3PfLgtxw61iS43TDHG1NMpBaj6yB2Up1FARxWG",
+      "error": "panicked: {\"code\":\"only_owner\"}",
+      "kind": "tx",
+      "signer": "maya.deedhq.testnet",
+      "method": "transfer_sub_account"
     },
     {
       "row": "A7",
@@ -192,7 +222,8 @@
       "verdict": "PASS",
       "what": "The name has 0 access keys: nobody can sign as it",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     },
     {
       "row": "D2",
@@ -200,8 +231,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller tries to switch the service back on",
-      "tx": null,
-      "error": "panicked: only the current owner of the name can activate it"
+      "tx": "3igFiWEAS5quztSSq1uxud6ujiYFtgQinabT5wWRV2va",
+      "error": "panicked: only the current owner of the name can activate it",
+      "kind": "tx",
+      "signer": "maya.deedhq.testnet",
+      "method": "activate"
     },
     {
       "row": "G1",
@@ -210,7 +244,8 @@
       "verdict": "PASS",
       "what": "hos_agent_status: agent disabled, grant gone",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     },
     {
       "row": "D2",
@@ -219,7 +254,8 @@
       "verdict": "PASS",
       "what": "The buyer activates the service under their name",
       "tx": "7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "C5",
@@ -227,8 +263,11 @@
       "got": "fail",
       "verdict": "PASS",
       "what": "The seller tries to take the money inside the 5-minute window",
-      "tx": null,
-      "error": "panicked: revert window still open; try again after final_after_ns"
+      "tx": "2RsMf89ffbBBhaiWAajNzotdqdxNyyCNq3R8tPR5oJMe",
+      "error": "panicked: revert window still open; try again after final_after_ns",
+      "kind": "tx",
+      "signer": "maya.deedhq.testnet",
+      "method": "claim_proceeds"
     },
     {
       "row": "C5",
@@ -237,7 +276,8 @@
       "verdict": "PASS",
       "what": "After the window, anyone triggers payment",
       "tx": "BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp",
-      "error": null
+      "error": null,
+      "kind": "tx"
     },
     {
       "row": "G5",
@@ -246,7 +286,8 @@
       "verdict": "PASS",
       "what": "The seller received exactly price minus 2.5% royalty (0.975 NEAR)",
       "tx": null,
-      "error": null
+      "error": null,
+      "kind": "state"
     }
   ]
 }

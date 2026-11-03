@@ -68,6 +68,8 @@ steps=[json.loads(l) for l in open(lines)]
 json.dump({"network":"testnet","name":name,"ran_at":datetime.datetime.utcnow().isoformat()+"Z",
            "passed":fails==0,"failures":fails,"steps":steps},open(report,"w"),indent=2)
 PY
+# near-cli-rs prints no tx id for failed transactions; look the rejected attacks up on chain.
+python3 verify/backfill-tx.py "$REPORT" >/dev/null 2>&1 || echo "warn: could not backfill attack tx hashes"
 echo; [ "$FAILS" = 0 ] && echo "ALL PASS — report: $REPORT" || echo "$FAILS FAILURE(S) — report: $REPORT"
 exit "$FAILS"
 }
