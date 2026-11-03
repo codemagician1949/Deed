@@ -43,11 +43,16 @@ export function riskFlags(tx: ProposedTx): RiskFlag[] {
     const p = a.params ?? {}
     switch (a.type) {
       case "AddKey": {
-        const access = JSON.stringify(p.accessKey ?? p.access_key ?? {})
-        if (access.includes("FullAccess") || access.includes('"fullAccess"') || !access.includes("FunctionCall")) {
+        // Read the permission's structure: a function-call key names a receiver contract.
+        const ak = (p.accessKey ?? p.access_key ?? {}) as Record<string, unknown>
+        const perm = ak.permission ?? ak
+        const permStr = typeof perm === "string" ? perm : ""
+        const fc = typeof perm === "object" && perm !== null ? ((perm as Record<string, unknown>).FunctionCall ?? perm) as Record<string, unknown> : null
+        const limited = !!fc && typeof (fc.receiverId ?? fc.receiver_id) === "string"
+        if (/fullaccess/i.test(permStr) || !limited) {
           add("full_access_key", "high", "Adds a FULL-ACCESS key: whoever holds it can take everything in the account.")
         } else {
-          add("function_call_key", "medium", "Adds a limited key that can call a contract on your behalf and spend gas allowance.")
+          add("function_call_key", "info", `Adds a limited key that can only call ${String(fc!.receiverId ?? fc!.receiver_id)} and spend a gas allowance.`)
         }
         break
       }
@@ -70,13 +75,26 @@ export function riskFlags(tx: ProposedTx): RiskFlag[] {
         const method = String(p.methodName ?? p.method_name ?? "")
         const args = (p.args ?? {}) as Record<string, unknown>
         total += big(p.deposit)
-        if (/approve|allowance|storage_withdraw/i.test(method) && Object.values(args).some(isMax)) {
-          add("unlimited_approval", "high", `Calls ${method} with an unlimited amount: the receiver could move all of that token.`)
+        const to = String(args.receiver_id ?? args.spender_id ?? args.account_id ?? tx.receiver_id)
+        if (/approve|allowance/i.test(method) && Object.values(args).some(isMax)) {
+          add("unlimited_approval", "high", `Calls ${method} with an unlimited amount: ${to} could move all of that token.`)
+        } else if (/^(ft_approve|mt_approve|increase_allowance)$/i.test(method)) {
+          add("approval", "medium", `Lets ${to} spend some of your tokens later without asking again.`)
         }
-        if (/^(ft_transfer|ft_transfer_call|nft_transfer|nft_transfer_call|mt_transfer|mt_batch_transfer)$/.test(method)) {
-          add("moves_assets", "info", `Moves tokens or NFTs out via ${method} to ${String(args.receiver_id ?? tx.receiver_id)}.`)
+        if (method === "nft_approve") add("nft_approval", "high", `Lets ${to} move this NFT at any time without asking you.`)
+        if (method === "nft_revoke_all") add("nft_revoke", "info", "Removes every approval on this NFT.")
+        if (/^(ft_transfer|nft_transfer|mt_transfer|mt_batch_transfer)$/.test(method)) {
+          add("moves_assets", "info", `Moves tokens or NFTs out via ${method} to ${to}.`)
         }
-        if (method === "nft_approve" || method === "nft_revoke_all") add("nft_approval", "medium", `${method} changes who may move your NFT.`)
+        if (/_transfer_call$/.test(method)) {
+          add("transfer_call", "medium", `Sends tokens or an NFT into ${to}, whose code then decides what happens to them (normal for swaps and marketplaces).`)
+        }
+        for (const v of Object.values(args)) {
+          if (/^\d{28,}$/.test(String(v)) && !isMax(v)) {
+            add("extreme_amount", "high", "Moves an extremely large token amount: likely your entire balance.")
+            break
+          }
+        }
         if (/^(w_execute|execute|exec|multicall|batch)/i.test(method)) {
           add("opaque_call", "medium", `${method} runs other actions inside it. Read the inner actions before signing.`)
         }
@@ -87,11 +105,18 @@ export function riskFlags(tx: ProposedTx): RiskFlag[] {
         add("unknown_action", "medium", `Unfamiliar action type "${a.type}".`)
     }
   }
-  if (total >= 10n * YOCTO) add("large_value", "high", `Sends ${Number(total / 10n ** 21n) / 1000} NEAR in total.`)
+  if (total >= 100n * YOCTO) add("large_value", "high", `Sends ${Number(total / 10n ** 21n) / 1000} NEAR in total.`)
+  else if (total >= 10n * YOCTO) add("large_value", "medium", `Sends ${Number(total / 10n ** 21n) / 1000} NEAR in total. Make sure that's intended.`)
   // 1 yoctoNEAR is a security deposit many calls require, not a payment; only report >= 0.001 NEAR.
   else if (total >= 10n ** 21n) add("value", "info", `Sends ${Number(total / 10n ** 21n) / 1000} NEAR in total.`)
-  if (!/\.(near|testnet)$/.test(tx.receiver_id) && !/^[0-9a-f]{64}$/.test(tx.receiver_id) && !/^0x[0-9a-f]{40}$/.test(tx.receiver_id)) {
-    add("unusual_receiver", "medium", `The receiver ${tx.receiver_id} is not a .near/.testnet name. Check it's the one you mean.`)
+  // Web-domain-looking receivers (evil-site.com) are a common phishing pattern on NEAR.
+  if (/\.(com|io|org|net|xyz|app|site|link|gift|claim)$/i.test(tx.receiver_id)) {
+    add("domain_like_receiver", "medium", `The receiver ${tx.receiver_id} looks like a website name, not a NEAR account. Check it's the one you mean.`)
+  }
+  // Lookalike names: a digit swapped into a word (dep0sit, b1nance, wa11et).
+  const names = [tx.receiver_id, ...tx.actions.map((a) => String(((a.params ?? {}).args as Record<string, unknown> | undefined)?.receiver_id ?? ""))]
+  if (names.some((n) => /[a-z][01][a-z]/i.test(n.split(".")[0]))) {
+    add("lookalike_name", "medium", "An account name swaps a digit for a letter (like dep0sit): a common impersonation trick.")
   }
   return flags
 }

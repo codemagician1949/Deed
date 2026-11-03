@@ -8,7 +8,8 @@
     "test": "bun test",
     "refunds": "bun run src/refunds.ts",
     "typecheck": "tsc --noEmit",
-    "ask": "bun run src/ask.ts"
+    "ask": "bun run src/ask.ts",
+    "eval": "bun run eval/run.ts"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

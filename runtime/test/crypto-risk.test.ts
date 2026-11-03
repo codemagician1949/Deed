@@ -52,7 +52,7 @@ describe("risk flags", () => {
   })
   test("large transfers and odd receivers are flagged; empty txs are malformed", () => {
     expect(codes({ receiver_id: "bob.testnet", actions: [{ type: "Transfer", params: { deposit: (25n * 10n ** 24n).toString() } }] })).toContain("large_value")
-    expect(codes({ receiver_id: "evil-site.com", actions: [{ type: "Transfer", params: { deposit: "1" } }] })).toContain("unusual_receiver")
+    expect(codes({ receiver_id: "evil-site.com", actions: [{ type: "Transfer", params: { deposit: "1" } }] })).toContain("domain_like_receiver")
     expect(codes({ receiver_id: "", actions: [] } as never)).toEqual(["malformed"])
   })
 })
