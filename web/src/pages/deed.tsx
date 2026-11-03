@@ -188,8 +188,8 @@ export function DeedPage() {
                 <h3 className="font-heading text-2xl">Reading this page</h3>
                 <p className="text-muted-foreground">
                   Every line is a real transaction on NEAR testnet that touched this name; click <i>proof</i> to open it. Payments
-                  marked <span className="rounded-full bg-success/12 px-1.5 text-success">real customer</span> came from accounts
-                  outside our team; <span className="rounded-full bg-muted px-1.5">our demo</span> payments came from our own test
+                  marked <span className="rounded-full bg-success/12 px-1.5 text-success">outside account</span> came from accounts
+                  that aren't ours (that alone doesn't prove they're independent customers); <span className="rounded-full bg-muted px-1.5">our demo</span> payments came from our own test
                   scripts.
                 </p>
                 <p className="text-muted-foreground">
@@ -358,7 +358,7 @@ function ActionCard({ deed, onBuy, onDone }: { deed: LiveDeed; onBuy: () => void
           <p className="mt-1 text-muted-foreground">
             {near(Number(BigInt(sale.price_yocto) - BigInt(sale.royalty_yocto)) / 1e24)} to {sale.seller}.{" "}
             {secondsLeft > 0
-              ? `Unlocks in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")} (House of Stake can still reverse the sale until then).`
+              ? `Unlocks in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")} (a short settlement window before money leaves the escrow).`
               : "The safety window has closed. Anyone can release it."}
           </p>
           <Button

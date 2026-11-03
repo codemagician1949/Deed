@@ -16,5 +16,5 @@ export const CONFIG = {
   mainnetCodeHashes: testnet.mainnetCodeHashes as Record<string, string>,
 }
 
-/** Accounts our own scripts use. Payments from these are labelled "our demo", everything else "real customer". */
+/** Accounts our own scripts use. Payments from these are labelled "our demo", everything else "outside account" (not proof of independent demand). */
 export const isDemoAccount = (a: string) => a === CONFIG.root || a.endsWith(`.${CONFIG.root}`)

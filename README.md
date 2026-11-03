@@ -1,6 +1,6 @@
 # Deed
 
-**Deed turns a NEAR name into an AI service you can own, prove and sell.** The name (for example `preflight.deedbot.deedhq.testnet`) is at the same time an NEP-171 NFT, a real NEAR account with its own wallet, and the identity of a paid service. When a Deed is sold, the wallet's own audited code wipes every permission the seller or the seller's AI agents had, and settles the seller's earnings to them in the same step. Deed adds the activation registry, the sale escrow, the public track record and a verifier that attacks every sale from the seller's side.
+**Deed makes a NEAR name a sellable, paid AI service.** The name (for example `preflight.deedbot.deedhq.testnet`) is at the same time an NEP-171 NFT, a real NEAR account with its own wallet, and the identity of a paid service. Customers pay the name; when it's sold, House of Stake's wallet code (audited by Valhalla Security per their repo; Deed's own code is not audited) wipes every permission the seller or their AI agents had and pays the seller what the name earned, and Deed's escrow pays the price. **What transfers:** the name, its wallet and incoming payments, its public record, and the right to choose which runtime serves it. **What doesn't:** compute, API keys or a hosted runtime; see [What a buyer gets](#what-a-buyer-gets-and-doesnt). Deed adds the activation registry, the sale escrow, the Preflight runtime and a verifier that attacks a sale from the seller's side. Every guarantee, whose code enforces it and where it's proven: [docs/INVARIANTS.md](docs/INVARIANTS.md).
 
 - **Live app:** https://deed-near.vercel.app (NEAR testnet; connect a testnet wallet to buy or ask Preflight)
 - **Live Preflight runtime:** https://preflight-production-8802.up.railway.app/v1/health ([API](#the-preflight-service-runtime))
@@ -43,6 +43,18 @@ On NEAR, Top Level Accounts (House of Stake) already make the NFT **be** the acc
 
 ---
 
+## What a buyer gets (and doesn't)
+
+| Transfers with the Deed | Doesn't transfer |
+|---|---|
+| The name, its keyless wallet and future payments into it | Compute, hosting, a NEAR AI API key |
+| The public record (sales, payments, blocked attempts, answered jobs) | The seller's knowledge (nothing secret is kept in the config) |
+| The right to switch the service on and choose **which runtime** serves it (`runtime_id` + config fingerprint in the activation) | Refund obligations for jobs another runtime accepted (owed by that operator) |
+
+Today one operator account (`deedhq.testnet`) runs the hosted Preflight runtime for every Deed. A buyer who wants independence runs their own copy ([runtime/Dockerfile](runtime/Dockerfile) with their own `RUNTIME_ID` and NEAR AI key) and activates it; from then on the old operator can't serve that name, because the runtime checks that the activation names it. The resale royalty (2.5%) goes to `deedhq.testnet`, the team, fixed at contract init.
+
+---
+
 ## What is real today
 
 | Part | Status | Where |
@@ -50,12 +62,12 @@ On NEAR, Top Level Accounts (House of Stake) already make the NFT **be** the acc
 | Threat model, written before code (25 attacks) | **Done** | [THREAT_MODEL.md](THREAT_MODEL.md) |
 | `deed` contract: owner-checked activation, sale escrow, refund on failure, 5-min proceeds lock, capped royalty, NEP-297 events | **Done, deployed on testnet** | [contract/deed/src/lib.rs](contract/deed/src/lib.rs) |
 | Sale tested against the **exact House of Stake bytecode that runs on mainnet** (hash-checked), 19 checks | **Passing** | [contract/deed/tests/real_fleet.rs](contract/deed/tests/real_fleet.rs) |
-| Escrow edge cases (forced transfer failure, House of Stake revert, wrong price, stale listing, FT-blocked listing, double claim), 9 tests | **Passing** | [contract/deed/tests/escrow.rs](contract/deed/tests/escrow.rs) |
+| Escrow edge cases (forced transfer failure, name back in escrow after a sale, buyer returning the name, wrong price, stale listing, FT-blocked listing, double claim), 10 tests; the buyer-return case also runs on the real bytecode | **Passing** | [contract/deed/tests/escrow.rs](contract/deed/tests/escrow.rs) |
 | House of Stake TLA replica on testnet from mainnet bytecode (all code hashes equal mainnet) | **Live** | [deploy/testnet.json](deploy/testnet.json) |
 | A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
 | Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
 | NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
-| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 22 tests incl. a sale in the middle of a paid job; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
+| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 25 tests incl. a sale in the middle of a paid job and payer authentication; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
 | "Try Preflight" page: free risk flags, pay the Deed from your wallet, get the signed explanation; a Jobs tab on each Deed page | **Built** | [web/src/pages/try.tsx](web/src/pages/try.tsx) |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
@@ -81,8 +93,8 @@ contract/test.sh
 It downloads House of Stake's mainnet bytecode once (read-only RPC; [deploy/fetch-mainnet-wasm.sh](deploy/fetch-mainnet-wasm.sh)), builds `deed`, and runs three suites in a local NEAR sandbox. **You will see:**
 ```
 test result: ok. 3 passed   (unit)
-test result: ok. 9 passed   (escrow edge cases, mock registry)
-test result: ok. 1 passed   (full sale on mainnet bytecode)
+test result: ok. 10 passed  (escrow edge cases, mock registry)
+test result: ok. 2 passed   (full sale + buyer-return case on mainnet bytecode)
 ```
 To see each of the 19 checks of the real-bytecode sale:
 ```bash
@@ -134,11 +146,11 @@ Production build: `bun run build` (type-check + Vite build, output in `web/dist`
 (Or use the hosted one: `curl https://preflight-production-8802.up.railway.app/v1/health`. It runs [runtime/Dockerfile](runtime/Dockerfile) on Railway with a persistent volume for the job ledger, so replay protection survives redeploys. It holds no NEAR key: refunds are paid from the operator's machine with `RUNTIME_URL=<host> bun run refunds --yes`, and the server records a refund only after verifying the refund transaction on chain.)
 
 ```bash
-cd runtime && bun install && bun test     # 22 tests: sale mid-job, replay, fail-closed, payment checks, TEE signature check, risk flags
+cd runtime && bun install && bun test     # 25 tests: sale mid-job, payer auth, replay, fail-closed, payment checks, TEE signature check, risk flags
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
 curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
 ```
-**You will see** `22 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
+**You will see** `25 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
 
 ### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
@@ -164,11 +176,11 @@ Every script is safe to re-run and skips finished steps. The verifier only count
 ```
 
 1. **Rent.** A name is rented from the registry. The registrar creates the account, runs the global `hos-wallet` code on it, and installs **no access keys**. Only extensions listed in the wallet (the owner, the lease authority, and any agents the owner adds) can act, by calling the wallet.
-2. **Activate.** The owner calls `deed.activate(token_id, runtime_id, config_hash, price, version)`. The contract reads `nft_token` from the registry **in the same transaction** and records the activation only if the caller is the current owner. `config_hash` is a public fingerprint of the service settings (nothing secret).
+2. **Activate.** The owner calls `deed.activate(token_id, runtime_id, config_hash, price, version)`. The contract makes a cross-contract `nft_token` view on the registry and, in the callback, records the activation only if the caller was the owner. These are two receipts, not one atomic step, so ownership can change in between; a stale activation is harmless because the runtime serves a job only when `activation.owner` equals the owner it reads fresh for that job. `config_hash` is the sha256 of the public service config (nothing secret).
 3. **Run and earn.** The owner can add an AI agent as a wallet extension and give it a capped `hos_grant_spend` (allow-listed receivers, budget, expiry). Customers pay NEAR into the name.
 4. **List.** The seller calls `registry.nft_transfer_call(receiver_id = deed contract, msg = {"price_yocto": "…"})`. The name rotates into the escrow; on that rotation the wallet **clears all spend grants, removes every extension, and sweeps the NEAR balance to the seller's payout account**. The escrow records the listing and deletes the seller's activation. (TLA has no NFT approvals, so the escrow must own the name while it's listed.)
 5. **Buy.** The buyer calls `deed.buy(token_id, expected_price, listing_nonce)` with exactly the price. The escrow first points the name's payout at the seller (so anything paid in while it was listed is swept to the seller), then calls `registry.transfer_sub_account(…, buyer)`. If the transfer fails, the buyer is refunded in full in the callback and the listing reopens.
-6. **Settle.** House of Stake can revert the last rotation for 5 minutes. The seller's proceeds unlock only after that: anyone calls `claim_proceeds(sale_id)`; the contract re-reads the owner. If the buyer owns it, the seller is paid (price minus royalty, royalty to the template creator). If the escrow owns it again (a revert happened), the buyer is refunded and the listing is restored for the seller.
+6. **Settle.** After a 5-minute settlement window (a safety margin; on the deployed House of Stake code nothing can undo a completed transfer), anyone calls `claim_proceeds(sale_id)`: the seller is paid the price minus royalty, the royalty goes to `royalty_account`. If the name is sitting in the escrow unlisted (the buyer sent it back), it is recorded as the buyer's listing so they can take it back with `cancel`; there is no refund.
 7. **Switch on.** The buyer activates with a higher version. The service answers again, earning into the same name.
 
 Sequence of the sale (real calls):
@@ -186,7 +198,7 @@ anyone ──claim_proceeds──▶ deed ──nft_token──▶ registry ─�
 
 ## The exact security claim
 
-After a sale is final (the 5-minute revert window has closed):
+After a sale and its 5-minute settlement window:
 
 | | Claim | Enforced by |
 |---|---|---|
@@ -198,7 +210,7 @@ After a sale is final (the 5-minute revert window has closed):
 
 **Not claimed:** that the seller forgets what they knew. The design keeps nothing secret worth knowing: the service config is public (fingerprint on chain), and no third-party API keys live in the Deed. What is sold is the name, the incoming payment stream and the verifiable track record.
 
-**Residual risks (stated plainly):** House of Stake is a trusted lease authority (it can revert within 5 minutes, reclaim expired names, run recovery; on our testnet replica the recovery watchers are random keys nobody holds). An off-chain runtime can be down (payments wait in the account). An unrenewed lease can be reclaimed (the title page shows `lease_until`).
+**Residual risks (stated plainly):** House of Stake is a trusted lease authority (it can reclaim expired names, run recovery and upgrade its contracts; on our testnet replica the recovery watchers are random keys nobody holds). An off-chain runtime can be down (payments wait in the account). An unrenewed lease can be reclaimed (the title page shows `lease_until`).
 
 ---
 
@@ -221,14 +233,16 @@ Full model with actors and decisions: [THREAT_MODEL.md](THREAT_MODEL.md). "Sandb
 | C1 | Buyer pays, transfer fails | refund in `on_buy_resolved`, listing reopens | mock (forced failure) |
 | C2 | Underpayment | exact-price check | mock |
 | C4 | Price changed mid-purchase | `expected_price` + `listing_nonce` pinning | mock |
-| C5 | Sale reverted after the seller is paid | proceeds locked for the 5-min window; revert → buyer refunded, listing restored | testnet (lock + payout after window) + mock (revert path) |
+| C5 | The name ends up back in the escrow after a sale | seller paid after a 5-min window (insurance: on deployed House of Stake code nothing can undo a completed transfer); a name back in escrow is recorded as the buyer's listing | testnet (early claim refused, payout after window) + mock |
 | C6 | Double claim of proceeds | state change before transfer | mock |
+| C7 | **Free rental**: buyer sends the name back to the escrow hoping for a refund (found in review; v1 would have refunded) | seller always paid at claim; the name is the buyer's to take back | **real bytecode** + mock |
+| D6 | **Payment theft**: someone submits another person's public payment tx with their own question (found in review) | payer signs each job with NEP-413 over Deed + payment + request hash; key must be a full-access key of the payer | runtime tests + hosted runtime (401) |
 | D1 | **Sale in the middle of a paid job** | an accepted job is always delivered once; the owner at acceptance and at delivery are both recorded; a payment made before the sale is never served by the buyer (refund) | runtime tests |
 | D2 | Seller re-activates the service / replays an old activation | live owner check + strictly increasing version; the runtime also requires the activation to name this runtime and this exact config fingerprint | sandbox + testnet + mock + runtime tests |
 | D4 | One payment used for two answers | payment tx hash = job id; in-flight guard for simultaneous submissions | runtime tests + testnet (409 on replay) |
 | D5 | Runtime serves under a stale owner when RPC is down | every job reads owner, activation, payment and last ownership change fresh; any failure = refuse, record nothing | runtime tests |
 
-"Mock" tests use [contract/mock-registry](contract/mock-registry/src/lib.rs), a test-only stand-in that mirrors the registry rules Deed depends on (documented in its header), so we can force failures and a House of Stake revert, which the real contracts don't let a test trigger.
+"Mock" tests use [contract/mock-registry](contract/mock-registry/src/lib.rs), a test-only stand-in that mirrors the registry rules Deed depends on (documented in its header), so we can force failures and simulate a future House of Stake revert, which the real contracts don't let a test trigger.
 
 ---
 
@@ -251,37 +265,37 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 ## Live sale on testnet: results
 
-Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UTC**, name `preflight.deedbot.deedhq.testnet` (seller `maya.deedhq.testnet`, buyer `kofi.deedhq.testnet`, price 1 NEAR). Result: **ALL PASS**, 9/9 attack attempts blocked on-chain with the expected error. Raw report: [verify/report-testnet.json](verify/report-testnet.json). Earlier runs are kept unedited in [verify/runs/](verify/runs/) (run 2 had one failing row, an outdated B3 check written for the pre-fix payout design; the contract behaved correctly).
+Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UTC**, name `preflight.deedbot.deedhq.testnet` (seller `maya.deedhq.testnet`, buyer `kofi.deedhq.testnet`, price 1 NEAR). Result: **ALL PASS**: 9/9 attack attempts rejected with the expected error. Seven were **transactions** (each linked, with the attacking account and method; the chain rejected the receipt), two were **view calls** that panicked (NEP-641 sign-in), and the rest are **state reads** (owner, balances, keys). This is one scripted, team-run scenario: a bounded test, not proof that every transfer is secure. Raw report: [verify/report-testnet.json](verify/report-testnet.json). Earlier runs are kept unedited in [verify/runs/](verify/runs/) (run 2 had one failing row, an outdated B3 check written for the pre-fix payout design; the contract behaved correctly). Attack tx hashes are looked up on chain by [verify/backfill-tx.py](verify/backfill-tx.py), because near-cli-rs prints no tx id for failed transactions.
 
-| Row | Step | Result (on-chain error for attacks) | Verdict | Transaction |
-|---|---|---|---|---|
-| setup | The seller adds their AI agent as an extension | ok | PASS | [`CR2yYG8N…`](https://testnet.nearblocks.io/txns/CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC) |
-| setup | The seller adds a second co-owner (a hidden back door) | ok | PASS | [`2bPkGQER…`](https://testnet.nearblocks.io/txns/2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL) |
-| setup | The seller grants their agent a capped spend (0.1 NEAR, to the seller only) | ok | PASS | [`2s6frdSD…`](https://testnet.nearblocks.io/txns/2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A) |
-| earn | A customer pays 0.1 NEAR into the name | ok | PASS | [`Hai8ysgG…`](https://testnet.nearblocks.io/txns/Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe) |
-| pre | The seller's agent spends within its grant | ok | PASS | [`1dEFEs4u…`](https://testnet.nearblocks.io/txns/1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu) |
-| pre | The seller can sign in as the name (NEP-641) | ok | PASS | view call / balance check |
-| A5 | The seller's agent tries to sign in as the name | **blocked**: `panicked: a spend grantee cannot authorise as an owner` | PASS | view call / balance check |
-| list | The seller lists: the name moves into the escrow | ok | PASS | [`BT5WAwu6…`](https://testnet.nearblocks.io/txns/BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3) |
-| B1 | The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees) | ok | PASS | view call / balance check |
-| earn | A customer pays 0.1 NEAR into the name while it is listed | ok | PASS | [`EdBuBTeh…`](https://testnet.nearblocks.io/txns/EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV) |
-| buy | The buyer pays exactly the price; the escrow hands them the name | ok | PASS | [`EnpYudm2…`](https://testnet.nearblocks.io/txns/EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh) |
-| G5 | Registry says the buyer (kofi.deedhq.testnet) owns the name | ok | PASS | view call / balance check |
-| B3 | Money paid in while listed reached the seller at the sale (+0.1016 NEAR) | ok | PASS | view call / balance check |
-| A1 | The seller's agent tries to spend | **blocked**: `panicked: extension 'maya-agent.deedhq.testnet' is not enabled` | PASS | view call / balance check |
-| A2 | The seller's hidden co-owner tries to move money | **blocked**: `panicked: extension 'maya-partner.deedhq.testnet' is not enabled` | PASS | view call / balance check |
-| A2 | The seller tries to move money themselves | **blocked**: `panicked: extension 'maya.deedhq.testnet' is not enabled` | PASS | view call / balance check |
-| A3 | The seller tries to re-grant their agent | **blocked**: `panicked: only the owner may perform this operation` | PASS | view call / balance check |
-| A4 | The seller tries to sign in as the name | **blocked**: `panicked: named account is not an owner of this account` | PASS | view call / balance check |
-| A4 | The buyer can sign in as the name | ok | PASS | view call / balance check |
-| A6 | The seller tries to sell the name again | **blocked**: `panicked: {"code":"only_owner"}` | PASS | view call / balance check |
-| A7 | The name has 0 access keys: nobody can sign as it | ok | PASS | view call / balance check |
-| D2 | The seller tries to switch the service back on | **blocked**: `panicked: only the current owner of the name can activate it` | PASS | view call / balance check |
-| G1 | hos_agent_status: agent disabled, grant gone | ok | PASS | view call / balance check |
-| D2 | The buyer activates the service under their name | ok | PASS | [`7WHhr3Fm…`](https://testnet.nearblocks.io/txns/7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o) |
-| C5 | The seller tries to take the money inside the 5-minute window | **blocked**: `panicked: revert window still open; try again after final_after_ns` | PASS | view call / balance check |
-| C5 | After the window, anyone triggers payment | ok | PASS | [`BuMALMxS…`](https://testnet.nearblocks.io/txns/BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp) |
-| G5 | The seller received exactly price minus 2.5% royalty (0.975 NEAR) | ok | PASS | view call / balance check |
+| Row | Step | Kind | Result (on-chain error for attacks) | Verdict | Transaction |
+|---|---|---|---|---|---|
+| setup | The seller adds their AI agent as an extension | transaction | ok | PASS | [`CR2yYG8N…`](https://testnet.nearblocks.io/txns/CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC) |
+| setup | The seller adds a second co-owner (a hidden back door) | transaction | ok | PASS | [`2bPkGQER…`](https://testnet.nearblocks.io/txns/2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL) |
+| setup | The seller grants their agent a capped spend (0.1 NEAR, to the seller only) | transaction | ok | PASS | [`2s6frdSD…`](https://testnet.nearblocks.io/txns/2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A) |
+| earn | A customer pays 0.1 NEAR into the name | transaction | ok | PASS | [`Hai8ysgG…`](https://testnet.nearblocks.io/txns/Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe) |
+| pre | The seller's agent spends within its grant | transaction | ok | PASS | [`1dEFEs4u…`](https://testnet.nearblocks.io/txns/1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu) |
+| pre | The seller can sign in as the name (NEP-641) | view call | ok | PASS | — |
+| A5 | The seller's agent tries to sign in as the name | view call | **blocked**: `panicked: a spend grantee cannot authorise as an owner` | PASS | — |
+| list | The seller lists: the name moves into the escrow | transaction | ok | PASS | [`BT5WAwu6…`](https://testnet.nearblocks.io/txns/BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3) |
+| B1 | The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees) | state read | ok | PASS | — |
+| earn | A customer pays 0.1 NEAR into the name while it is listed | transaction | ok | PASS | [`EdBuBTeh…`](https://testnet.nearblocks.io/txns/EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV) |
+| buy | The buyer pays exactly the price; the escrow hands them the name | transaction | ok | PASS | [`EnpYudm2…`](https://testnet.nearblocks.io/txns/EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh) |
+| G5 | Registry says the buyer (kofi.deedhq.testnet) owns the name | state read | ok | PASS | — |
+| B3 | Money paid in while listed reached the seller at the sale (+0.1016 NEAR) | state read | ok | PASS | — |
+| A1 | The seller's agent tries to spend (`maya-agent.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-agent.deedhq.testnet' is not enabled` | PASS | [`HxNQgNef…`](https://testnet.nearblocks.io/txns/HxNQgNef9XyLeq6Wi4rmTz4tXwiFgid697tW7a6Z6u9F) |
+| A2 | The seller's hidden co-owner tries to move money (`maya-partner.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-partner.deedhq.testnet' is not enabled` | PASS | [`5rAnst8X…`](https://testnet.nearblocks.io/txns/5rAnst8XaY5w9ZLP2M7ym2gS141SVcAYfNK5XnPgkC9o) |
+| A2 | The seller tries to move money themselves (`maya.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya.deedhq.testnet' is not enabled` | PASS | [`89D4CpB6…`](https://testnet.nearblocks.io/txns/89D4CpB6nXxGK7aQkm799oTfg4134fjqn2feUJjMmLTK) |
+| A3 | The seller tries to re-grant their agent (`maya.deedhq.testnet` → `hos_grant_spend`) | transaction | **blocked**: `panicked: only the owner may perform this operation` | PASS | [`5swvNdij…`](https://testnet.nearblocks.io/txns/5swvNdijTS51fyYop4ZEAL1zvpEpgePkBpyN4EU5a3ze) |
+| A4 | The seller tries to sign in as the name | view call | **blocked**: `panicked: named account is not an owner of this account` | PASS | — |
+| A4 | The buyer can sign in as the name | view call | ok | PASS | — |
+| A6 | The seller tries to sell the name again (`maya.deedhq.testnet` → `transfer_sub_account`) | transaction | **blocked**: `panicked: {"code":"only_owner"}` | PASS | [`7KmgmY3P…`](https://testnet.nearblocks.io/txns/7KmgmY3PfLgtxw61iS43TDHG1NMpBaj6yB2Up1FARxWG) |
+| A7 | The name has 0 access keys: nobody can sign as it | state read | ok | PASS | — |
+| D2 | The seller tries to switch the service back on (`maya.deedhq.testnet` → `activate`) | transaction | **blocked**: `panicked: only the current owner of the name can activate it` | PASS | [`3igFiWEA…`](https://testnet.nearblocks.io/txns/3igFiWEAS5quztSSq1uxud6ujiYFtgQinabT5wWRV2va) |
+| G1 | hos_agent_status: agent disabled, grant gone | state read | ok | PASS | — |
+| D2 | The buyer activates the service under their name | transaction | ok | PASS | [`7WHhr3Fm…`](https://testnet.nearblocks.io/txns/7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o) |
+| C5 | The seller tries to take the money inside the 5-minute window (`maya.deedhq.testnet` → `claim_proceeds`) | transaction | **blocked**: `panicked: revert window still open; try again after final_after_ns` | PASS | [`2RsMf89f…`](https://testnet.nearblocks.io/txns/2RsMf89ffbBBhaiWAajNzotdqdxNyyCNq3R8tPR5oJMe) |
+| C5 | After the window, anyone triggers payment | transaction | ok | PASS | [`BuMALMxS…`](https://testnet.nearblocks.io/txns/BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp) |
+| G5 | The seller received exactly price minus 2.5% royalty (0.975 NEAR) | state read | ok | PASS | — |
 
 ### Live Preflight jobs (NEAR testnet)
 
@@ -302,15 +316,15 @@ Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by t
 
 | Method | Who | What |
 |---|---|---|
-| `new(registry, royalty_account, royalty_bps ≤ 1000, revert_window_ns?)` | deployer | init; revert window defaults to 5 min (hos-wallet `REVERT_WINDOW_NS`) |
+| `new(registry, royalty_account, royalty_bps ≤ 1000, revert_window_ns?)` | deployer | init; settlement window defaults to 5 min. On testnet `royalty_account` = `deedhq.testnet` (the team), 250 bps |
 | `activate(token_id, runtime_id, config_hash, price_yocto, version)` | current owner | reads `nft_token` cross-contract; records only if caller == owner and version > previous |
 | `nft_on_transfer(sender_id, previous_owner_id, token_id, msg)` | registry only | records a listing `{price_yocto}`; returns `true` (give back) for bad msg, already listed, or unsettled previous sale. State only: the registry gives it 25 Tgas |
 | `buy(token_id, expected_price, listing_nonce)` | anyone but the seller | payable, exact price, ≥ 230 Tgas; re-points payout to seller, transfers the name, refunds on failure |
-| `claim_proceeds(sale_id)` | anyone | after the revert window: pays the seller and royalty, or refunds the buyer if reverted |
+| `claim_proceeds(sale_id)` | anyone | after the settlement window: pays the seller and royalty; a name back in escrow becomes the buyer's listing |
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
 | views | anyone | `get_activation`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
 
-**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `sale_reverted_refunded`, `claim_retry`, `cancelled`, `cancel_failed`.
+**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `returned_to_buyer_listing`, `sale_reverted_refunded` (v1 only), `claim_retry`, `cancelled`, `cancel_failed`.
 
 ---
 
@@ -321,15 +335,18 @@ Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by t
 | Endpoint | What |
 |---|---|
 | `POST /v1/flags {request}` | deterministic risk flags, free ([src/risk.ts](runtime/src/risk.ts): full-access keys, account deletion, contract deploys, unlimited approvals, large values, asset moves, unusual receivers…) |
-| `POST /v1/jobs {name, payment_tx, sender, request}` | the paid job |
+| `POST /v1/jobs {name, payment_tx, sender, request, auth}` | the paid job; `auth = {public_key, signature, nonce}` is a NEP-413 signature by the payer (recipient `deed-preflight`) over `Preflight job / Deed / Payment / Request sha256` ([src/nep413.ts](runtime/src/nep413.ts)) |
+| `POST /v1/jobs/:id/refund {refund_tx}` | records a refund after checking on chain that the operator sent at least the paid amount to the payer |
 | `GET /v1/jobs?name=` | public job ledger (shown in the Deed page's **Jobs answered** tab) |
 | `GET /v1/config`, `GET /v1/health` | the published service config and its fingerprint |
 
-**Job rules** ([src/jobs.ts](runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). A job is accepted only if the payment is final, went to this name, came from the caller, covers the activated price and is under 24 h old, **and** a fresh read shows the current registry owner signed an activation that names this runtime and this exact config fingerprint. If the name is sold mid-job, the job is still delivered once, and both owners are recorded. A payment made before the latest ownership change is refunded. One made after it but before the new owner switches on is held, then served when they do (refunded after 24 h). Failures refund; RPC trouble refuses.
+**Job rules** ([src/jobs.ts](runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). A job is accepted only if the payer signed it (NEP-413, checked against their on-chain full-access keys, binding this payment to this exact request), the payment is final, went to this name, came from the caller, covers the activated price and is under 24 h old, **and** a fresh read shows the current registry owner signed an activation that names this runtime and this exact config fingerprint. If the name is sold mid-job, the job is still delivered once, and both owners are recorded. A payment made before the latest ownership change is refunded. One made after it but before the new owner switches on is held, then served when they do (refunded after 24 h). Failures refund; RPC trouble refuses.
 
-**Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer, then checks that signer is listed in NEAR AI's attestation report for the model (`/v1/attestation/report`, Intel TDX + NVIDIA evidence; cached 10 min). All three checks are stored with the job and shown on the page.
+**Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer, then checks that signer is listed in NEAR AI's attestation report for the model (`/v1/attestation/report`, Intel TDX + NVIDIA evidence; cached 10 min). All three checks are stored with the job and shown on the page. **Trust boundary:** this proves signed inference by a provider-reported enclave key. We don't independently verify the TDX/NVIDIA quote chain, and the runtime's own logic (owner checks, ledger, refunds) runs on an ordinary server, not in a TEE. An authentic answer isn't necessarily a correct one.
 
 **Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`8c5e8df1…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
+
+**Agents and scripts** pay and ask in one command: `bun run ask --as <account.testnet> --runtime <url> --example approve` ([src/ask.ts](runtime/src/ask.ts)) reads the price from the activation, pays the Deed, signs the job with `near message sign-nep413` and prints the answer with its enclave checks.
 
 **Refunds** ([src/refunds.ts](runtime/src/refunds.ts)) come from the runtime operator's account, never the Deed (THREAT_MODEL decision 2). Dry run by default.
 
@@ -349,7 +366,7 @@ React 19 + Vite + TypeScript + Tailwind v4 + [shadcn/ui](https://ui.shadcn.com) 
 | `/console` | owner console, opens only for the current registry owner: switch on/update price, list, cancel | **live** + wallet (read-only preview without one) |
 | `/try` | Try Preflight: free risk flags, pay the Deed, get the signed explanation | runtime + wallet |
 
-How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every transaction that touched the name and the Deed contract, decode the NEP-297 events (`nep171:nft_transfer`, `hos_tla_tenant_wallet:swept_near`, `spend_granted`, `spend_charged`, `wallet:extension_added`, `hos_tla_extension:force_transfer_completed`, every `deed:*` event), plain transfers into the name (payments; from our own `*.deedhq.testnet` accounts they're labelled *our demo*, from anyone else *real customer*), and failed calls into the wallet or registry (misuse attempts). Requests are shared and cached briefly because the public APIs are rate-limited.
+How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every transaction that touched the name and the Deed contract, decode the NEP-297 events (`nep171:nft_transfer`, `hos_tla_tenant_wallet:swept_near`, `spend_granted`, `spend_charged`, `wallet:extension_added`, `hos_tla_extension:force_transfer_completed`, every `deed:*` event), plain transfers into the name (payments; from our own `*.deedhq.testnet` accounts they're labelled *our demo*, from anyone else *outside account*, which alone doesn't prove independent demand), and failed calls into the wallet or registry (misuse attempts). Requests are shared and cached briefly because the public APIs are rate-limited.
 
 ---
 
@@ -359,7 +376,7 @@ How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every t
 THREAT_MODEL.md              threat model, written before code
 contract/
   deed/src/lib.rs            the Deed contract (activation, escrow, royalty, events)
-  deed/tests/escrow.rs       9 sandbox tests vs the mock registry (forced failures, revert, pricing)
+  deed/tests/escrow.rs       10 sandbox tests vs the mock registry (forced failures, name returned to escrow, pricing)
   deed/tests/real_fleet.rs   full sale vs House of Stake MAINNET bytecode, 19 checks, 300 Tgas cap
   mock-registry/             test-only registry stand-in
   test.sh                    build + run everything
@@ -400,15 +417,18 @@ docs/                        research (verified facts with source refs), spike r
 
 ## Testing strategy
 
-Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 22 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
+Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 25 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
 
-1. **Mock registry** ([escrow.rs](contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, House of Stake revert, FT-blocked listing).
+1. **Mock registry** ([escrow.rs](contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, a name reverted to the escrow, FT-blocked listing).
 2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.
 3. **Live testnet** ([verify/testnet-sale.sh](verify/testnet-sale.sh)): the same sale and attacks as real transactions; each attack must fail with its expected error; results go to [verify/report-testnet.json](verify/report-testnet.json) and the `/proof` page.
 
 ---
 
 ## Bugs our tests caught
+
+- **Payment theft (D6), found in external review.** The runtime trusted `{payment_tx, sender}` from the caller, so anyone who saw a public payment could submit it first with their own question. Each job is now signed by the payer (NEP-413) and checked against the payer's on-chain keys.
+- **Free rental (C7), found while answering review.** v1's `claim_proceeds` treated "the escrow owns the name again" as a House of Stake revert and refunded the buyer, but a buyer could create that state by sending the name back. Reading House of Stake's code showed no admin undo exists for a completed transfer, so the seller is now always paid; the case is tested on the real bytecode.
 
 - **Two processes, one ledger.** The refund tool recorded a refund while the runtime server held an older in-memory copy of the job ledger that it would have written back. The store now re-reads the file on every operation and writes atomically.
 - **Listing ran out of gas on testnet.** The first version re-pointed payout inside `nft_on_transfer`. The registry gives that hook a fixed 25 Tgas; the payout call needs about 45, so the receipt failed and the registry correctly returned the name to the seller. The sandbox didn't catch it because it allows more gas per transaction. Fix: the hook only records state; `buy`/`cancel` re-point payout before the transfer. The sandbox test now uses the 300 Tgas cap. (Commit: "fix: re-point payout in buy/cancel…")
@@ -420,7 +440,7 @@ Contract and sale: three layers, each closer to reality (the runtime adds a four
 
 | Project | Model | Difference from Deed |
 |---|---|---|
-| ERC-6551 token-bound accounts | NFT points at a separate smart wallet | on NEAR the NFT **is** the account; no separate wallet to forget to move |
+| ERC-6551 token-bound accounts | each NFT controls a separate smart-contract account whose control follows the token | similar idea; on NEAR the token and the account are the same name, and a sale also wipes delegated agent keys and settles the account's balance to the seller |
 | ERC-7857 / 0G iNFT | agent NFT; secrets re-encrypted on transfer via TEE/oracle | Deed keeps nothing secret; control passes because the audited wallet wipes extensions on rotation |
 | Virtuals Protocol | tokens per agent (speculation on the agent) | Deed sells the operating business itself (name, earnings stream, record) |
 | Flippa / Acquire | web2 marketplaces for businesses, trust-based handover | handover enforced on-chain and attacked by a verifier on every sale |

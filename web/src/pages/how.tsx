@@ -44,7 +44,7 @@ const FAQ = [
   },
   {
     q: "Why does the seller wait 5 minutes to get paid?",
-    a: "The network operator can undo the very last transfer of a name within 5 minutes, for emergencies. So the seller's money unlocks only once the sale is final. If it's undone, you're refunded.",
+    a: "It's a short settlement window before money leaves the escrow, kept as a safety margin. When it ends, anyone can release the payment. The seller is always paid for a completed sale; if the buyer ever sends the name back to the escrow, it stays theirs to take back, and they don't get a refund.",
   },
   {
     q: "Can the seller take the secret recipe?",

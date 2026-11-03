@@ -182,7 +182,11 @@ function historyFrom(tokenId: string, txs: TxSummary[]): HistoryEvent[] {
           break
         case "deed:sale_reverted_refunded":
           if (d.sale?.token_id !== tokenId) break
-          push({ kind: "refund", title: `Sale reversed: ${d.sale.buyer} refunded`, amountNear: toNear(d.sale.price_yocto) })
+          push({ kind: "refund", title: `Sale reversed (v1 contract): ${d.sale.buyer} refunded`, amountNear: toNear(d.sale.price_yocto) })
+          break
+        case "deed:returned_to_buyer_listing":
+          if (d.listing?.token_id !== tokenId) break
+          push({ kind: "listed", title: `Name was back in the escrow after the sale: recorded as ${d.listing.seller}'s to take back` })
           break
         case "deed:cancelled":
           if (d.token_id !== tokenId) break

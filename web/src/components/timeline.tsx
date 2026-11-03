@@ -75,7 +75,7 @@ export function Timeline({ events }: { events: HistoryEvent[] }) {
                       e.source === "external" ? "bg-success/12 text-success" : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {e.source === "external" ? "real customer" : "our demo"}
+                    {e.source === "external" ? "outside account" : "our demo"}
                   </span>
                 )}
                 {e.tx && (
