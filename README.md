@@ -50,8 +50,8 @@ On NEAR, Top Level Accounts (House of Stake) already make the NFT **be** the acc
 | Escrow edge cases (forced transfer failure, House of Stake revert, wrong price, stale listing, FT-blocked listing, double claim), 9 tests | **Passing** | [contract/deed/tests/escrow.rs](contract/deed/tests/escrow.rs) |
 | House of Stake TLA replica on testnet from mainnet bytecode (all code hashes equal mainnet) | **Live** | [deploy/testnet.json](deploy/testnet.json) |
 | A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
-| Web app: home, browse, per-Deed title page with history, animated sale explainer, safety-proof page, gated owner console | **Built** | [web/](web/) |
-| Web app reading live testnet data and signing with a NEAR wallet | **Not yet**: pages use **labelled sample data** ("Sample data" badge on every such screen); the Safety proof page shows the **real** live-run report | [web/src/lib/data.ts](web/src/lib/data.ts) |
+| Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
+| NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
 | The "Preflight" AI service (NEAR AI verifiable inference, paid per job) | **Not yet** (see [Roadmap](#roadmap-not-built-yet)) | n/a |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
@@ -116,12 +116,12 @@ view preflight.deedbot.deedhq.testnet w_extensions '{}'                         
 ```bash
 cd web && bun install && bun run dev
 ```
-Open http://localhost:5173. **You will see:**
-- `/`: what a Deed is, and **"Watch a sale"**: an 8-step animation of a sale (name moves, seller's keys break, earnings settle, 5-min safety window, buyer switches it on).
-- `/market`: Deeds with filters and search.
-- `/deed/preflight.bot`: a title page with history (each payment labelled *real customer* or *our demo*), owners, earnings and the public config fingerprint; **Buy** opens a step-by-step rehearsal (no transaction is sent).
-- `/proof`: **the live testnet run** (each step with its transaction link), then every attack as a card you can replay.
-- `/console`: locked until you connect; *Preview as* a sample owner to see the gated owner view.
+Open http://localhost:5173. Every page reads **NEAR testnet** directly (RPC for contract state, the FastNEAR transaction API for history; no backend). **You will see:**
+- `/`: what a Deed is, live totals, and **"Watch a sale"**: an 8-step animation of a sale (name moves, seller's keys break, earnings settle, 5-min safety window, buyer switches it on).
+- `/market`: every Deed in the registry (`nft_tokens`), with filters and search.
+- `/deed/preflight.deedbot.deedhq.testnet`: the title page. Status, owner, price, and a **History** built from every transaction that touched the name: both live sales, each earnings sweep, each permission wipe, the royalty, and every blocked misuse attempt with the wallet's own error text; each line links to the transaction. Tabs for owners (with what was paid in during each holding), earnings, and on-chain facts (balance, payout account, lease, code hashes). **Buy** sends the real `buy` transaction from your wallet; after a sale, a countdown shows when the seller's payment can be released.
+- `/proof`: **the live testnet run** (each step with its transaction link), then every attack as a card.
+- `/console`: locked until you connect. With a NEAR testnet wallet that owns a Deed you can switch the service on, change its price, list it or cancel a listing. Without a wallet, *Or look around as an owner* opens a read-only preview of an owner's real view (it can't sign).
 
 Production build: `bun run build` (type-check + Vite build, output in `web/dist`).
 
@@ -291,14 +291,14 @@ React 19 + Vite + TypeScript + Tailwind v4 + [shadcn/ui](https://ui.shadcn.com) 
 
 | Route | Purpose | Data today |
 |---|---|---|
-| `/` | what a Deed is; animated sale explainer | sample (badged) |
-| `/market` | browse/filter Deeds | sample (badged) |
-| `/deed/:id` | title page: status, stats, history timeline, owners, earnings, service config fingerprint; buy rehearsal | sample (badged) |
+| `/` | what a Deed is; live totals; animated sale explainer | **live** |
+| `/market` | every Deed in the registry, filter/search | **live** |
+| `/deed/:id` | title page: status, stats, on-chain history, owners, earnings, on-chain facts; real buy and release-payment | **live** + wallet |
 | `/how` | four steps + FAQ | static |
-| `/proof` | **live testnet run report** with tx links + every attack | **live report** ([web/public/report-testnet.json](web/public/report-testnet.json)) |
-| `/console` | gated owner console (opens only for the current owner) | sample, *preview* mode only (cannot sign) |
+| `/proof` | live testnet run report with tx links + every attack | **live report** ([web/public/report-testnet.json](web/public/report-testnet.json)) |
+| `/console` | owner console, opens only for the current registry owner: switch on/update price, list, cancel | **live** + wallet (read-only preview without one) |
 
-The data layer is one module ([web/src/lib/data.ts](web/src/lib/data.ts)); switching it to the testnet contracts is the next web task.
+How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every transaction that touched the name and the Deed contract, decode the NEP-297 events (`nep171:nft_transfer`, `hos_tla_tenant_wallet:swept_near`, `spend_granted`, `spend_charged`, `wallet:extension_added`, `hos_tla_extension:force_transfer_completed`, every `deed:*` event), plain transfers into the name (payments; from our own `*.deedhq.testnet` accounts they're labelled *our demo*, from anyone else *real customer*), and failed calls into the wallet or registry (misuse attempts). Requests are shared and cached briefly because the public APIs are rate-limited.
 
 ---
 
@@ -376,7 +376,7 @@ Three layers, each closer to reality:
 
 Listed so reviewers can tell built from planned:
 
-1. **Web app on live testnet data** with NEAR wallet sign-in (NEAR Connect), real list/buy/claim, and a gated console that opens via NEP-641.
+1. **NEP-641 sign-in for the console**: today the console opens for the wallet account that the registry lists as owner; the next step is resolving a signed NEP-641 authorization through the name's `w_resolve_auth` (already proven to reject the old owner on testnet).
 2. **"Preflight" service runtime** (Bun + TypeScript): pays-per-job explanation of a NEAR transaction before signing, answered by a NEAR AI Cloud verifiable (TEE-signed) model; per-job owner check with no cache; fail closed if RPC is unavailable.
 3. **Indexer + evidence ledger** (every number links to a tx; demo vs external payments; a recompute script).
 4. **Sale in the middle of a paid job** (threat-model rows D1, D4, D5): the rule is written in [THREAT_MODEL.md](THREAT_MODEL.md) §D; the runtime test lands with item 2.
@@ -388,7 +388,7 @@ Listed so reviewers can tell built from planned:
 - **Built during the hackathon window** (from 2026-11-02): everything in this repository. No pre-hackathon code of ours.
 - **Third-party code we deploy unmodified:** House of Stake `tla-contracts` mainnet bytecode (registry, extension, registrar, wallet, wallet deployer, recovery), fetched from mainnet and hash-checked; it is not committed (`*.wasm` is git-ignored).
 - **Rust:** `near-sdk` 5.30, `near-workspaces` 0.24, `tokio`, `serde_json`, `anyhow`, `sha2`, `bs58`.
-- **Web:** React 19, Vite 8, TypeScript, Tailwind CSS 4, shadcn/ui (Base UI), motion 14, react-router 7, lucide-react, sonner, Geist and Instrument Serif fonts.
+- **Web:** React 19, Vite 8, TypeScript, Tailwind CSS 4, shadcn/ui (Base UI), motion 14, react-router 7, lucide-react, sonner, `@hot-labs/near-connect` 0.12 (wallets), Geist and Instrument Serif fonts. Data: NEAR RPC (FastNEAR) and the FastNEAR transaction API.
 - **Tools:** cargo-near 0.22, near-cli-rs 0.30, bun.
 - **AI-assisted development (Q-005):** the code, tests, scripts and docs were written with an AI coding assistant (Claude Code) directed and reviewed by the team. The design was reviewed by several models (notes in [docs/PANEL.md](docs/PANEL.md)).
 

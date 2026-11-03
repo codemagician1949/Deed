@@ -1,64 +1,83 @@
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { Check, Loader2, Lock } from "lucide-react"
+import { Check, ExternalLink, Loader2, ShoppingBag, Wallet, XCircle } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import type { Deed } from "@/lib/types"
-import { near } from "@/lib/format"
+import type { LiveDeed } from "@/lib/live"
+import { explorerTx, near } from "@/lib/format"
+import { useWallet } from "@/lib/wallet"
+import { buy } from "@/lib/actions"
 import { cn } from "@/lib/utils"
 import { ease } from "./motion"
 
 const STEPS = [
-  "Your payment goes into escrow",
+  "Your payment goes into the escrow",
+  "Payouts are pointed at the seller",
   "The name moves to you",
-  "The seller's keys are wiped",
-  "The seller's earnings are paid out to them",
-  "Safety window (5 minutes), then the seller is paid",
+  "The seller's keys are wiped by the wallet",
+  "After a 5-minute safety window, the seller is paid",
 ]
 
-/**
- * Explains what buying does, step by step. In preview it runs a rehearsal only:
- * it never sends a transaction (clearly stated in the dialog).
- */
-export function BuyDialog({ deed, open, onOpenChange }: { deed: Deed; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const [phase, setPhase] = useState<"review" | "running" | "done">("review")
-  const [step, setStep] = useState(-1)
+type Phase = "review" | "signing" | "done" | "failed"
+
+/** Buys a listed Deed with the connected NEAR testnet wallet (one transaction). */
+export function BuyDialog({
+  deed,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  deed: LiveDeed
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onDone: () => void
+}) {
+  const { account, preview, call, connect } = useWallet()
+  const [phase, setPhase] = useState<Phase>("review")
+  const [hash, setHash] = useState<string>("")
+  const [error, setError] = useState<string>("")
 
   useEffect(() => {
     if (!open) {
       setPhase("review")
-      setStep(-1)
+      setHash("")
+      setError("")
     }
   }, [open])
 
-  useEffect(() => {
-    if (phase !== "running") return
-    if (step >= STEPS.length - 1) {
-      const t = window.setTimeout(() => setPhase("done"), 700)
-      return () => window.clearTimeout(t)
-    }
-    const t = window.setTimeout(() => setStep((s) => s + 1), 900)
-    return () => window.clearTimeout(t)
-  }, [phase, step])
-
   if (!deed.listing) return null
+  const go = async () => {
+    setPhase("signing")
+    try {
+      const h = await buy(call, deed)
+      setHash(h)
+      setPhase("done")
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setHash((e as { hash?: string })?.hash ?? "")
+      setPhase("failed")
+    }
+  }
+  const doneCount = phase === "done" ? STEPS.length - 1 : 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-heading text-3xl font-normal">Buy {deed.id}</DialogTitle>
-          <DialogDescription>Here's exactly what happens when you buy. Nothing is hidden and nothing is left to trust.</DialogDescription>
+          <DialogTitle className="truncate font-heading text-3xl font-normal">Buy {deed.id.split(".")[0]}</DialogTitle>
+          <DialogDescription>One transaction does all of this. If any part fails, you get your money back in the same step.</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center justify-between rounded-2xl bg-primary/10 px-4 py-3 ring-1 ring-primary/25 ring-inset">
-          <span className="text-sm text-muted-foreground">You pay</span>
-          <span className="font-heading text-3xl text-primary">{near(deed.listing.priceNear, 0)}</span>
+          <span className="text-sm text-muted-foreground">You pay (testnet NEAR)</span>
+          <span className="font-heading text-3xl text-primary">{near(deed.listing.priceNear, 2)}</span>
         </div>
 
         <ol className="space-y-2">
           {STEPS.map((s, i) => {
-            const done = phase === "done" || i < step
-            const active = phase === "running" && i === step
+            const done = i < doneCount
+            const active = phase === "signing" || (phase === "done" && i === STEPS.length - 1)
             return (
               <motion.li
                 key={s}
@@ -67,9 +86,7 @@ export function BuyDialog({ deed, open, onOpenChange }: { deed: Deed; open: bool
                 transition={{ delay: 0.05 * i, ease }}
                 className={cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
-                  active && "bg-muted",
-                  done && "text-foreground",
-                  !done && !active && "text-muted-foreground",
+                  done ? "text-foreground" : active ? "bg-muted/60" : "text-muted-foreground",
                 )}
               >
                 <span
@@ -80,7 +97,7 @@ export function BuyDialog({ deed, open, onOpenChange }: { deed: Deed; open: bool
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {done ? (
-                      <motion.span key="c" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 20 }}>
+                      <motion.span key="c" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 20, delay: i * 0.12 }}>
                         <Check className="size-3.5" />
                       </motion.span>
                     ) : active ? (
@@ -101,34 +118,47 @@ export function BuyDialog({ deed, open, onOpenChange }: { deed: Deed; open: bool
         </ol>
 
         <AnimatePresence mode="wait">
-          {phase === "done" ? (
-            <motion.div
-              key="done"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-2xl border border-dashed border-border p-4 text-center text-sm"
-            >
-              <div className="font-medium">That was a rehearsal.</div>
-              <p className="text-muted-foreground">Real buying opens with the testnet launch. No transaction was sent.</p>
-              <Button variant="outline" className="mt-3 rounded-full" onClick={() => onOpenChange(false)}>
-                Close
+          {phase === "done" && (
+            <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl border border-success/30 bg-success/10 p-4 text-center text-sm">
+              <div className="font-medium text-success">It's yours.</div>
+              <p className="text-muted-foreground">Open "My Deeds" to switch the service on. The seller's payment unlocks after 5 minutes.</p>
+              {hash && (
+                <a href={explorerTx(hash)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs underline">
+                  View transaction <ExternalLink className="size-3" />
+                </a>
+              )}
+            </motion.div>
+          )}
+          {phase === "failed" && (
+            <motion.div key="failed" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive">
+                <XCircle className="size-4" /> The purchase didn't go through
+              </div>
+              <p className="mt-1 text-muted-foreground">{error}</p>
+              <p className="mt-1 text-muted-foreground">If any NEAR left your wallet, the escrow refunded it in the same transaction.</p>
+              {hash && (
+                <a href={explorerTx(hash)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs underline">
+                  View transaction <ExternalLink className="size-3" />
+                </a>
+              )}
+              <Button variant="outline" className="mt-3 w-full rounded-xl" onClick={() => setPhase("review")}>
+                Try again
               </Button>
             </motion.div>
-          ) : (
+          )}
+          {(phase === "review" || phase === "signing") && (
             <motion.div key="go" exit={{ opacity: 0 }}>
-              <Button
-                className="h-11 w-full rounded-xl text-sm"
-                disabled={phase === "running"}
-                onClick={() => {
-                  setPhase("running")
-                  setStep(0)
-                }}
-              >
-                <Lock /> {phase === "running" ? "Rehearsing…" : "Rehearse this purchase"}
-              </Button>
-              <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                Rehearsal only. Real purchases open with the testnet launch.
-              </p>
+              {!account || preview ? (
+                <Button className="h-11 w-full rounded-xl text-sm" onClick={() => connect().catch(() => undefined)}>
+                  <Wallet /> {preview ? "Preview can't buy: connect a real wallet" : "Connect a testnet wallet to buy"}
+                </Button>
+              ) : (
+                <Button className="h-11 w-full rounded-xl text-sm" disabled={phase === "signing"} onClick={go}>
+                  {phase === "signing" ? <Loader2 className="animate-spin" /> : <ShoppingBag />}
+                  {phase === "signing" ? "Confirm in your wallet…" : `Buy for ${near(deed.listing.priceNear, 2)}`}
+                </Button>
+              )}
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">NEAR testnet. Signed by {account && !preview ? account : "your wallet"}.</p>
             </motion.div>
           )}
         </AnimatePresence>

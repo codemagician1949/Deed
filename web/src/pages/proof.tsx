@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Aurora } from "@/components/bits"
 import { Page, Reveal, Stagger, StaggerItem, ease } from "@/components/motion"
 import { LiveRun } from "@/components/live-run"
-import { ATTACKS } from "@/lib/sample"
+import { ATTACKS } from "@/lib/attacks"
 import type { Attack, ProofStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const STATUS: Record<ProofStatus, { label: string; icon: typeof ShieldCheck; cls: string }> = {
-  proven_testnet: { label: "Proven on testnet", icon: ShieldCheck, cls: "bg-success/12 text-success" },
-  proven_sandbox: { label: "Proven against the real wallet code", icon: FlaskConical, cls: "bg-info/12 text-info" },
+  proven_testnet: { label: "Proven live on testnet", icon: ShieldCheck, cls: "bg-success/12 text-success" },
+  proven_sandbox: { label: "Proven in automated tests", icon: FlaskConical, cls: "bg-info/12 text-info" },
   planned: { label: "Test being built", icon: CircleDashed, cls: "bg-muted text-muted-foreground" },
 }
 
@@ -41,8 +41,8 @@ export function ProofPage() {
               <div className="text-xs text-muted-foreground">attacks with a passing test today</div>
             </div>
             <div className="max-w-sm rounded-2xl border border-dashed border-border px-5 py-3 text-sm text-muted-foreground">
-              Every test runs against the exact House of Stake code that is live on NEAR mainnet, in a private test network.
-              The same run on public testnet is next.
+              Green cards were attempted for real on NEAR testnet (the live report below has every transaction). Blue cards are
+              edge cases we force in automated tests, such as a transfer that fails mid-sale.
             </div>
           </Reveal>
         </div>

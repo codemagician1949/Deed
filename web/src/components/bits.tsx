@@ -1,5 +1,5 @@
 import { motion } from "motion/react"
-import { FlaskConical } from "lucide-react"
+import { Radio } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DeedStatus } from "@/lib/types"
 import { DATA_SOURCE } from "@/lib/data"
@@ -40,8 +40,8 @@ export function SealLogo({ className }: { className?: string }) {
 
 const STATUS: Record<DeedStatus, { label: string; hint: string; dot: string; ring: string }> = {
   serving: {
-    label: "Open for business",
-    hint: "The service is answering paid requests right now.",
+    label: "Switched on",
+    hint: "The current owner has switched the service on (recorded on chain). The runtime that answers paid jobs is on the roadmap.",
     dot: "bg-success",
     ring: "bg-success/15 text-success ring-success/25",
   },
@@ -138,24 +138,26 @@ export function Sparkline({
   )
 }
 
+/** Marks data read live from NEAR testnet. */
 export function SampleBadge({ className }: { className?: string }) {
-  if (DATA_SOURCE !== "sample") return null
+  if (DATA_SOURCE !== "testnet") return null
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary",
+              "inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success",
               className,
             )}
           />
         }
       >
-        <FlaskConical className="size-3" /> Sample data
+        <Radio className="size-3" /> Live · NEAR testnet
       </TooltipTrigger>
       <TooltipContent className="max-w-64">
-        These numbers are examples to show how the page works. Live testnet data replaces them once the contracts are deployed.
+        Read straight from NEAR testnet: contract state over RPC and every transaction that touched the name. Nothing on this
+        screen is sample data.
       </TooltipContent>
     </Tooltip>
   )

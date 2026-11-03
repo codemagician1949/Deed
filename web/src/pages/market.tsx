@@ -12,12 +12,12 @@ import { cn } from "@/lib/utils"
 const FILTERS: { id: "all" | DeedStatus; label: string }[] = [
   { id: "all", label: "All" },
   { id: "listed", label: "For sale" },
-  { id: "serving", label: "Open for business" },
+  { id: "serving", label: "Switched on" },
   { id: "awaiting_activation", label: "Just sold" },
 ]
 
 export function MarketPage() {
-  const deeds = useDeeds()
+  const { deeds, loading, error } = useDeeds()
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all")
   const [q, setQ] = useState("")
   const shown = useMemo(
@@ -41,8 +41,8 @@ export function MarketPage() {
               <SampleBadge />
             </div>
             <p className="mt-3 max-w-xl text-muted-foreground">
-              Every card is a working AI service with its own name, wallet and history. Open one to see exactly what it
-              has earned and who has owned it.
+              Every card is a real Deed on NEAR testnet: a name with its own wallet and history. Open one to see exactly what
+              it has earned, who has owned it and every attempt to misuse it.
             </p>
           </Reveal>
 
@@ -96,8 +96,12 @@ export function MarketPage() {
             ))}
           </AnimatePresence>
         </motion.div>
+        {loading && deeds.length === 0 && <p className="py-20 text-center text-muted-foreground">Reading Deeds from NEAR testnet…</p>}
+        {error && deeds.length === 0 && (
+          <p className="py-20 text-center text-destructive">Couldn't reach NEAR testnet: {error}. Refresh to try again.</p>
+        )}
         <AnimatePresence>
-          {shown.length === 0 && (
+          {!loading && !error && shown.length === 0 && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

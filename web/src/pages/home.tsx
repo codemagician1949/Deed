@@ -11,8 +11,8 @@ import { useDeeds } from "@/lib/data"
 const WORDS = ["own", "prove", "sell"]
 
 export function HomePage() {
-  const deeds = useDeeds()
-  const hero = deeds[0]
+  const { deeds, loading, error } = useDeeds()
+  const hero = deeds.find((d) => d.status !== "listed") ?? deeds[0]
   const { scrollYProgress } = useScroll()
   const cardY = useTransform(scrollYProgress, [0, 0.3], [0, 80])
   const cardRotate = useTransform(scrollYProgress, [0, 0.3], [0, -4])
@@ -97,13 +97,13 @@ export function HomePage() {
               className="mt-10 flex flex-wrap gap-x-10 gap-y-4"
             >
               <div>
-                <dt className="text-xs text-muted-foreground">Earned by Deeds</dt>
+                <dt className="text-xs text-muted-foreground">Paid into Deeds</dt>
                 <dd className="font-heading text-3xl">
                   <AnimatedNumber value={totals.earned} decimals={1} suffix=" NEAR" />
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">Jobs done</dt>
+                <dt className="text-xs text-muted-foreground">Payments received</dt>
                 <dd className="font-heading text-3xl">
                   <AnimatedNumber value={totals.jobs} />
                 </dd>
@@ -124,7 +124,7 @@ export function HomePage() {
             <FloatingChip className="-top-6 -left-8" delay={1.2} icon={Coins} text="Has its own wallet" />
             <FloatingChip className="top-[50%] -right-12" delay={1.4} icon={KeyRound} text="Keys move on sale" />
             <FloatingChip className="-bottom-5 left-2" delay={1.6} icon={ScrollText} text="Public track record" />
-            {hero && <DeedCard deed={hero} />}
+            {hero ? <DeedCard deed={hero} /> : <CardSkeleton failed={!!error} />}
           </motion.div>
         </div>
       </section>
@@ -216,12 +216,18 @@ export function HomePage() {
         <Reveal className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="font-heading text-4xl tracking-tight sm:text-5xl">Deeds right now</h2>
-            <p className="mt-2 text-muted-foreground">Each one is a live service with its own earnings and history.</p>
+            <p className="mt-2 text-muted-foreground">Read live from NEAR testnet. Each one has its own wallet, earnings and history.</p>
           </div>
           <Button variant="outline" className="rounded-full" render={<Link to="/market" />}>
             See all <ArrowRight />
           </Button>
         </Reveal>
+        {loading && deeds.length === 0 && (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <CardSkeleton />
+          </div>
+        )}
+        {error && deeds.length === 0 && <p className="text-sm text-destructive">Couldn't reach NEAR testnet: {error}. Refresh to try again.</p>}
         <Stagger className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {deeds.map((d) => (
             <StaggerItem key={d.id}>
@@ -231,6 +237,27 @@ export function HomePage() {
         </Stagger>
       </section>
     </Page>
+  )
+}
+
+function CardSkeleton({ failed = false }: { failed?: boolean }) {
+  return (
+    <div className="h-[430px] w-full rounded-3xl border border-border bg-card/60 p-5">
+      {failed ? (
+        <p className="pt-40 text-center text-sm text-muted-foreground">Couldn't reach NEAR testnet. Refresh to try again.</p>
+      ) : (
+        <div className="h-full animate-pulse space-y-4">
+          <div className="h-24 rounded-2xl bg-muted" />
+          <div className="h-4 w-3/4 rounded bg-muted" />
+          <div className="h-14 rounded bg-muted" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="h-16 rounded-xl bg-muted" />
+            <div className="h-16 rounded-xl bg-muted" />
+            <div className="h-16 rounded-xl bg-muted" />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

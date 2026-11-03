@@ -9,11 +9,13 @@ import { Tilt } from "./motion"
 
 /** The Deed itself: a name that is also a wallet, a business and a token. */
 export function DeedCard({ deed, className, compact = false }: { deed: Deed; className?: string; compact?: boolean }) {
-  const [label, tla] = deed.id.split(".")
+  const dot = deed.id.indexOf(".")
+  const label = deed.id.slice(0, dot)
+  const tla = deed.id.slice(dot + 1)
   return (
     <Tilt className={cn("group rounded-3xl", className)} max={7}>
       <Link
-        to={`/deed/${deed.id}`}
+        to={`/deed/${encodeURIComponent(deed.id)}`}
         className="relative block overflow-hidden rounded-3xl border border-border bg-card shadow-[0_1px_0_0_rgb(255_255_255/0.06)_inset,0_24px_60px_-30px_rgb(0_0_0/0.6)] transition-shadow duration-500 hover:shadow-[0_1px_0_0_rgb(255_255_255/0.08)_inset,0_30px_80px_-28px_var(--glow)]"
       >
         {/* foil header */}
@@ -37,9 +39,9 @@ export function DeedCard({ deed, className, compact = false }: { deed: Deed; cla
             <StatusPill status={deed.status} className="bg-black/30 backdrop-blur-sm" />
             <ArrowUpRight className="size-5 text-white/60 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-white" />
           </div>
-          <div className="absolute bottom-3 left-5 font-heading text-3xl leading-none tracking-tight text-white">
+          <div className="absolute right-5 bottom-3 left-5 truncate font-heading text-3xl leading-none tracking-tight text-white">
             {label}
-            <span className="text-white/50">.{tla}</span>
+            <span className="ml-0.5 font-mono text-xs tracking-normal text-white/55">.{tla}</span>
           </div>
         </div>
 
@@ -50,7 +52,7 @@ export function DeedCard({ deed, className, compact = false }: { deed: Deed; cla
 
           <div className="grid grid-cols-3 gap-2 text-center">
             <Stat icon={Coins} label="Earned" value={near(deed.stats.earnedNear, 1)} />
-            <Stat icon={Briefcase} label="Jobs done" value={deed.stats.jobs.toLocaleString()} />
+            <Stat icon={Briefcase} label="Payments" value={deed.stats.jobs.toLocaleString()} />
             <Stat icon={Users} label="Owners" value={String(deed.holders.length)} />
           </div>
 
@@ -62,7 +64,7 @@ export function DeedCard({ deed, className, compact = false }: { deed: Deed; cla
           ) : (
             <div className="flex items-center justify-between rounded-2xl bg-muted/60 px-4 py-3">
               <span className="text-xs text-muted-foreground">Owned by</span>
-              <span className="font-mono text-xs">{deed.owner}</span>
+              <span className="truncate pl-3 font-mono text-xs">{deed.owner}</span>
             </div>
           )}
         </div>
