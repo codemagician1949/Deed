@@ -10,6 +10,7 @@ import { ConnectDialog } from "./connect-dialog"
 
 const NAV = [
   { to: "/market", label: "Browse" },
+  { to: "/try", label: "Try Preflight" },
   { to: "/how", label: "How it works" },
   { to: "/proof", label: "Safety proof" },
   { to: "/console", label: "My Deeds" },

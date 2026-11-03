@@ -26,6 +26,8 @@ interface WalletState {
   disconnect: () => Promise<void>
   /** Sends one function call and returns the transaction hash. */
   call: (p: CallParams) => Promise<string>
+  /** Sends NEAR to an account and returns the transaction hash. */
+  transfer: (receiverId: string, yocto: string) => Promise<string>
 }
 
 const Ctx = createContext<WalletState | null>(null)
@@ -99,6 +101,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [account, preview],
   )
 
+  const transfer = useCallback(
+    async (receiverId: string, yocto: string) => {
+      if (preview) throw new Error("Preview mode can't sign. Connect a NEAR testnet wallet to pay.")
+      const c = connectorRef.current
+      if (!c || !account) throw new Error("Connect a NEAR testnet wallet first.")
+      const wallet = await c.wallet()
+      const out = await wallet.signAndSendTransaction({
+        signerId: account,
+        receiverId,
+        actions: [{ type: "Transfer", params: { deposit: yocto } }],
+      } as never)
+      const hash = (out as { transaction?: { hash?: string } })?.transaction?.hash ?? ""
+      if (JSON.stringify((out as { status?: unknown })?.status ?? {}).includes("Failure")) throw new Error("The payment failed on chain.")
+      return hash
+    },
+    [account, preview],
+  )
+
   const value = useMemo<WalletState>(
     () => ({
       account,
@@ -107,12 +127,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       call,
+      transfer,
       previewAs: (a) => {
         setAccount(a)
         setPreview(true)
       },
     }),
-    [account, preview, ready, connect, disconnect, call],
+    [account, preview, ready, connect, disconnect, call, transfer],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

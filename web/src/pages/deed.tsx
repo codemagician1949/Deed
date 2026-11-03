@@ -30,6 +30,8 @@ import { useWallet } from "@/lib/wallet"
 import { cancel, claim } from "@/lib/actions"
 import type { LiveDeed } from "@/lib/live"
 import { cn } from "@/lib/utils"
+import { JobCard } from "@/components/job-card"
+import { jobsFor, type Job } from "@/lib/runtime"
 
 const explorerAccount = (a: string) => `https://testnet.nearblocks.io/address/${a}`
 
@@ -172,6 +174,7 @@ export function DeedPage() {
           <TabsList className="mb-6 flex-wrap">
             <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="owners">Owners</TabsTrigger>
+            <TabsTrigger value="jobs">Jobs answered</TabsTrigger>
             <TabsTrigger value="earnings">Earnings</TabsTrigger>
             <TabsTrigger value="chain">On-chain facts</TabsTrigger>
           </TabsList>
@@ -228,6 +231,10 @@ export function DeedPage() {
                 </motion.div>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="jobs">
+            <JobsTab name={deed.id} />
           </TabsContent>
 
           <TabsContent value="earnings">
@@ -327,11 +334,16 @@ function ActionCard({ deed, onBuy, onDone }: { deed: LiveDeed; onBuy: () => void
           <div className="font-heading text-5xl">{deed.activation ? near(deed.service.priceNear) : "Off"}</div>
           <p className="mt-2 text-sm text-muted-foreground">
             {deed.status === "serving"
-              ? `Switched on by ${deed.activation?.owner} (version ${deed.activation?.version}). The runtime that answers paid jobs is on the roadmap.`
+              ? `Switched on by ${deed.activation?.owner} (version ${deed.activation?.version}). Pay the name and Preflight answers; it checks the owner live on every job.`
               : "Waiting for the current owner to switch the service on. Payments sent now wait safely in the account."}
           </p>
+          {deed.status === "serving" && (
+            <Button className="mt-4 h-11 w-full rounded-xl text-sm" render={<Link to="/try" />}>
+              Ask Preflight
+            </Button>
+          )}
           {account === deed.owner && (
-            <Button variant="outline" className="mt-4 w-full rounded-xl" render={<Link to="/console" />}>
+            <Button variant="outline" className="mt-3 w-full rounded-xl" render={<Link to="/console" />}>
               Manage in My Deeds
             </Button>
           )}
@@ -401,6 +413,35 @@ function ChainFacts({ deed }: { deed: LiveDeed }) {
         <p className="mt-2 text-xs text-muted-foreground">
           Our testnet deployment uses these exact mainnet code hashes (Top Level Accounts has no official testnet deployment).
         </p>
+      </div>
+    </div>
+  )
+}
+
+function JobsTab({ name }: { name: string }) {
+  const [jobs, setJobs] = useState<Job[] | null>(null)
+  const [offline, setOffline] = useState(false)
+  useEffect(() => {
+    jobsFor(name).then(setJobs).catch(() => setOffline(true))
+  }, [name])
+  if (offline)
+    return (
+      <p className="text-sm text-muted-foreground">
+        The Preflight runtime's job ledger isn't reachable from here. Run it locally with <code className="font-mono">cd runtime && bun run start</code>.
+      </p>
+    )
+  if (!jobs) return <div className="h-32 animate-pulse rounded-3xl bg-muted/40" />
+  if (!jobs.length) return <p className="text-sm text-muted-foreground">No paid jobs yet. <Link to="/try" className="underline">Ask Preflight</Link>.</p>
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Every paid job this Deed's runtime received: who paid, under which owner it was accepted, the answer, and the enclave
+        signature check. Refunds link to their transaction.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {jobs.map((j) => (
+          <JobCard key={j.id} job={j} />
+        ))}
       </div>
     </div>
   )

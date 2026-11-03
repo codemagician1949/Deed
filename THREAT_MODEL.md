@@ -71,11 +71,11 @@ After a sale is final (revert window closed):
 
 | # | Attack | What stops it | Verifier check |
 |---|---|---|---|
-| D1 | Sale lands between a job's payment and its delivery | Rule above; scripted race | `sale_mid_job_completes_once` |
+| D1 | Sale lands between a job's payment and its delivery | Rule above; scripted race | runtime/test/jobs.test.ts "D1: sale in the middle of a paid job" (5 tests) |
 | D2 | A replays an old activation (NEP-641 blob) after the sale | Activation stores `{owner, version, nonce}`; E records it only if the signer is the current owner. The runtime checks `activation.owner == current owner` per job | `stale_activation_refused` |
 | D3 | A runs its own runtime copy and keeps answering as the name | It can answer, but it can't receive payments into its own account under the name, can't sign as the name (A4), and its answers won't be on the title page (only R's TEE-signed results bound to the current activation are listed). Customers verify via the title page | `rogue_runtime_not_listed` (ledger check) |
-| D4 | Same payment used for two jobs | Job id = payment receipt id; served-set is persisted; second use refused | `payment_replay_refused` |
-| D5 | RPC stale/down so the runtime serves under the old owner | Fail closed: no fresh owner read → no job | `rpc_down_fails_closed` |
+| D4 | Same payment used for two jobs | Job id = payment tx hash; ledger persisted; in-flight guard; second use refused | runtime tests "D4" + live testnet replay → 409 |
+| D5 | RPC stale/down so the runtime serves under the old owner | Fail closed: no fresh owner read → no job, nothing recorded | runtime tests "D5" |
 
 ### E. Lies about the track record
 | # | Attack | What stops it | Verifier check |

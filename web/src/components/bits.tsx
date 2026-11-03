@@ -41,7 +41,7 @@ export function SealLogo({ className }: { className?: string }) {
 const STATUS: Record<DeedStatus, { label: string; hint: string; dot: string; ring: string }> = {
   serving: {
     label: "Switched on",
-    hint: "The current owner has switched the service on (recorded on chain). The runtime that answers paid jobs is on the roadmap.",
+    hint: "The current owner has switched the service on (recorded on chain). The Preflight runtime answers paid jobs for this owner only.",
     dot: "bg-success",
     ring: "bg-success/15 text-success ring-success/25",
   },

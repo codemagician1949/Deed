@@ -18,15 +18,16 @@
 7. [Live deployment (NEAR testnet)](#live-deployment-near-testnet)
 8. [Live sale on testnet: results](#live-sale-on-testnet-results)
 9. [Contract reference](#contract-reference)
-10. [Web app](#web-app)
-11. [Repository layout](#repository-layout)
-12. [NEAR features used (with file paths)](#near-features-used-with-file-paths)
-13. [Testing strategy](#testing-strategy)
-14. [Bugs our tests caught](#bugs-our-tests-caught)
-15. [Prior art and what is different](#prior-art-and-what-is-different)
-16. [Roadmap (not built yet)](#roadmap-not-built-yet)
-17. [Libraries, AI-written code and baseline](#libraries-ai-written-code-and-baseline)
-18. [Team and other submissions](#team-and-other-submissions)
+10. [The Preflight service (runtime)](#the-preflight-service-runtime)
+11. [Web app](#web-app)
+12. [Repository layout](#repository-layout)
+13. [NEAR features used (with file paths)](#near-features-used-with-file-paths)
+14. [Testing strategy](#testing-strategy)
+15. [Bugs our tests caught](#bugs-our-tests-caught)
+16. [Prior art and what is different](#prior-art-and-what-is-different)
+17. [Roadmap (not built yet)](#roadmap-not-built-yet)
+18. [Libraries, AI-written code and baseline](#libraries-ai-written-code-and-baseline)
+19. [Team and other submissions](#team-and-other-submissions)
 
 ---
 
@@ -52,7 +53,8 @@ On NEAR, Top Level Accounts (House of Stake) already make the NFT **be** the acc
 | A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
 | Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
 | NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
-| The "Preflight" AI service (NEAR AI verifiable inference, paid per job) | **Not yet** (see [Roadmap](#roadmap-not-built-yet)) | n/a |
+| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Built**, 22 tests incl. a sale in the middle of a paid job. Live on testnet: payment and owner checks, refunds (2 jobs). **Answers need a `NEARAI_API_KEY`** (not configured yet), so live jobs so far were refunded | [runtime/](runtime/) |
+| "Try Preflight" page: free risk flags, pay the Deed from your wallet, get the signed explanation; a Jobs tab on each Deed page | **Built** | [web/src/pages/try.tsx](web/src/pages/try.tsx) |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
 
@@ -125,7 +127,15 @@ Open http://localhost:5173. Every page reads **NEAR testnet** directly (RPC for 
 
 Production build: `bun run build` (type-check + Vite build, output in `web/dist`).
 
-### 4. Re-run the live sale on testnet (needs testnet NEAR)
+### 4. Run the Preflight service
+```bash
+cd runtime && bun install && bun test     # 22 tests: sale mid-job, replay, fail-closed, payment checks, TEE signature check, risk flags
+bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
+curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
+```
+**You will see** `22 pass`, then the health JSON with `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet. Without an API key a paid job is accepted, then marked `refund_due`, and `bun run refunds --yes` pays it back from the operator account.
+
+### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
 ROOT=<your-account>.testnet deploy/testnet.sh        # deploy your own replica (~65 testnet NEAR, mostly the 433 KB global wallet code)
 ROOT=<your-account>.testnet deploy/seed-testnet.sh   # demo seller + buyer, rent a name, activate
@@ -208,7 +218,10 @@ Full model with actors and decisions: [THREAT_MODEL.md](THREAT_MODEL.md). "Sandb
 | C4 | Price changed mid-purchase | `expected_price` + `listing_nonce` pinning | mock |
 | C5 | Sale reverted after the seller is paid | proceeds locked for the 5-min window; revert → buyer refunded, listing restored | testnet (lock + payout after window) + mock (revert path) |
 | C6 | Double claim of proceeds | state change before transfer | mock |
-| D2 | Seller re-activates the service / replays an old activation | live owner check + strictly increasing version | sandbox + testnet + mock |
+| D1 | **Sale in the middle of a paid job** | an accepted job is always delivered once; the owner at acceptance and at delivery are both recorded; a payment made before the sale is never served by the buyer (refund) | runtime tests |
+| D2 | Seller re-activates the service / replays an old activation | live owner check + strictly increasing version; the runtime also requires the activation to name this runtime and this exact config fingerprint | sandbox + testnet + mock + runtime tests |
+| D4 | One payment used for two answers | payment tx hash = job id; in-flight guard for simultaneous submissions | runtime tests + testnet (409 on replay) |
+| D5 | Runtime serves under a stale owner when RPC is down | every job reads owner, activation, payment and last ownership change fresh; any failure = refuse, record nothing | runtime tests |
 
 "Mock" tests use [contract/mock-registry](contract/mock-registry/src/lib.rs), a test-only stand-in that mirrors the registry rules Deed depends on (documented in its header), so we can force failures and a House of Stake revert, which the real contracts don't let a test trigger.
 
@@ -285,6 +298,27 @@ Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UT
 
 ---
 
+## The Preflight service (runtime)
+
+[runtime/](runtime/) (Bun + TypeScript) is the service a Deed runs: before an agent or person signs a NEAR transaction, it pays the Deed and gets a plain-words explanation with risk flags, answered by a verifiable model.
+
+| Endpoint | What |
+|---|---|
+| `POST /v1/flags {request}` | deterministic risk flags, free ([src/risk.ts](runtime/src/risk.ts): full-access keys, account deletion, contract deploys, unlimited approvals, large values, asset moves, unusual receivers…) |
+| `POST /v1/jobs {name, payment_tx, sender, request}` | the paid job |
+| `GET /v1/jobs?name=` | public job ledger (shown in the Deed page's **Jobs answered** tab) |
+| `GET /v1/config`, `GET /v1/health` | the published service config and its fingerprint |
+
+**Job rules** ([src/jobs.ts](runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). A job is accepted only if the payment is final, went to this name, came from the caller, covers the activated price and is under 24 h old, **and** a fresh read shows the current registry owner signed an activation that names this runtime and this exact config fingerprint. If the name is sold mid-job, the job is still delivered once, and both owners are recorded. A payment made before the latest ownership change is refunded. One made after it but before the new owner switches on is held, then served when they do (refunded after 24 h). Failures refund; RPC trouble refuses.
+
+**Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer. Both checks are stored with the job and shown on the page.
+
+**Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`8c5e8df1…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
+
+**Refunds** ([src/refunds.ts](runtime/src/refunds.ts)) come from the runtime operator's account, never the Deed (THREAT_MODEL decision 2). Dry run by default.
+
+---
+
 ## Web app
 
 React 19 + Vite + TypeScript + Tailwind v4 + [shadcn/ui](https://ui.shadcn.com) (Base UI) + [motion](https://motion.dev). Dark and light themes, respects `prefers-reduced-motion`, plain-language copy with chain terms kept for the details.
@@ -297,6 +331,7 @@ React 19 + Vite + TypeScript + Tailwind v4 + [shadcn/ui](https://ui.shadcn.com) 
 | `/how` | four steps + FAQ | static |
 | `/proof` | live testnet run report with tx links + every attack | **live report** ([web/public/report-testnet.json](web/public/report-testnet.json)) |
 | `/console` | owner console, opens only for the current registry owner: switch on/update price, list, cancel | **live** + wallet (read-only preview without one) |
+| `/try` | Try Preflight: free risk flags, pay the Deed, get the signed explanation | runtime + wallet |
 
 How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every transaction that touched the name and the Deed contract, decode the NEP-297 events (`nep171:nft_transfer`, `hos_tla_tenant_wallet:swept_near`, `spend_granted`, `spend_charged`, `wallet:extension_added`, `hos_tla_extension:force_transfer_completed`, every `deed:*` event), plain transfers into the name (payments; from our own `*.deedhq.testnet` accounts they're labelled *our demo*, from anyone else *real customer*), and failed calls into the wallet or registry (misuse attempts). Requests are shared and cached briefly because the public APIs are rate-limited.
 
@@ -321,6 +356,8 @@ verify/
   testnet-sale.sh            live sale + attack matrix on testnet
   report-testnet.json        latest live report
   runs/                      earlier live reports, kept unedited
+runtime/                     the Preflight service (Bun): job rules, NEAR AI inference + signature check, refunds
+  preflight.config.json      the public service config; its sha256 is the activation fingerprint
 web/                         the web app
 docs/                        research (verified facts with source refs), spike results, track prompt, rules
 ```
@@ -340,13 +377,14 @@ docs/                        research (verified facts with source refs), spike r
 | **NEP-591** global contracts | `hos-wallet` published once, used by every name | [deploy/testnet.sh](deploy/testnet.sh) |
 | **NEP-297** events | every Deed state change is an indexable event | [contract/deed/src/lib.rs](contract/deed/src/lib.rs) |
 | **NEP-330** source metadata | used to identify the exact mainnet commits we replicated | [README](#live-deployment-near-testnet) |
+| **NEAR AI Cloud verifiable inference** (TEE, ECDSA-signed responses) | Preflight's answers; signature checked against the exact request/response bytes | [runtime/src/nearai.ts](runtime/src/nearai.ts), [runtime/src/tee.ts](runtime/src/tee.ts) |
 | Promise chains with callbacks and refunds | `buy` → payout → transfer → `on_buy_resolved` (refund on failure); `claim_proceeds` → `nft_token` → `on_claim_owner` | [contract/deed/src/lib.rs](contract/deed/src/lib.rs) |
 
 ---
 
 ## Testing strategy
 
-Three layers, each closer to reality:
+Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 22 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
 
 1. **Mock registry** ([escrow.rs](contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, House of Stake revert, FT-blocked listing).
 2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.
@@ -356,6 +394,7 @@ Three layers, each closer to reality:
 
 ## Bugs our tests caught
 
+- **Two processes, one ledger.** The refund tool recorded a refund while the runtime server held an older in-memory copy of the job ledger that it would have written back. The store now re-reads the file on every operation and writes atomically.
 - **Listing ran out of gas on testnet.** The first version re-pointed payout inside `nft_on_transfer`. The registry gives that hook a fixed 25 Tgas; the payout call needs about 45, so the receipt failed and the registry correctly returned the name to the seller. The sandbox didn't catch it because it allows more gas per transaction. Fix: the hook only records state; `buy`/`cancel` re-point payout before the transfer. The sandbox test now uses the 300 Tgas cap. (Commit: "fix: re-point payout in buy/cancel…")
 - **Verifier false positives.** An early verifier counted any failure as "attack blocked". It now requires the expected error text, and stops if the sale itself didn't happen.
 
@@ -377,9 +416,8 @@ Three layers, each closer to reality:
 Listed so reviewers can tell built from planned:
 
 1. **NEP-641 sign-in for the console**: today the console opens for the wallet account that the registry lists as owner; the next step is resolving a signed NEP-641 authorization through the name's `w_resolve_auth` (already proven to reject the old owner on testnet).
-2. **"Preflight" service runtime** (Bun + TypeScript): pays-per-job explanation of a NEAR transaction before signing, answered by a NEAR AI Cloud verifiable (TEE-signed) model; per-job owner check with no cache; fail closed if RPC is unavailable.
-3. **Indexer + evidence ledger** (every number links to a tx; demo vs external payments; a recompute script).
-4. **Sale in the middle of a paid job** (threat-model rows D1, D4, D5): the rule is written in [THREAT_MODEL.md](THREAT_MODEL.md) §D; the runtime test lands with item 2.
+2. **A NEAR AI API key for the hosted runtime**, so live jobs are answered instead of refunded, and a hosted runtime + web app for judges.
+3. **A recompute script** that rebuilds every number on a title page from chain data (the web app already builds its history from chain data, with tx links).
 
 ---
 
@@ -387,6 +425,7 @@ Listed so reviewers can tell built from planned:
 
 - **Built during the hackathon window** (from 2026-11-02): everything in this repository. No pre-hackathon code of ours.
 - **Third-party code we deploy unmodified:** House of Stake `tla-contracts` mainnet bytecode (registry, extension, registrar, wallet, wallet deployer, recovery), fetched from mainnet and hash-checked; it is not committed (`*.wasm` is git-ignored).
+- **Runtime (Bun):** `@noble/curves`, `@noble/hashes` (secp256k1 recovery, sha256, keccak); NEAR RPC and the FastNEAR transaction API; NEAR AI Cloud.
 - **Rust:** `near-sdk` 5.30, `near-workspaces` 0.24, `tokio`, `serde_json`, `anyhow`, `sha2`, `bs58`.
 - **Web:** React 19, Vite 8, TypeScript, Tailwind CSS 4, shadcn/ui (Base UI), motion 14, react-router 7, lucide-react, sonner, `@hot-labs/near-connect` 0.12 (wallets), Geist and Instrument Serif fonts. Data: NEAR RPC (FastNEAR) and the FastNEAR transaction API.
 - **Tools:** cargo-near 0.22, near-cli-rs 0.30, bun.
