@@ -326,3 +326,68 @@ async fn buyer_returning_the_name_gets_no_refund_on_real_bytecode() -> Result<()
     println!("PASS C7   buyer returning the name gets no refund; seller paid; buyer recovers the name (real bytecode)");
     Ok(())
 }
+
+async fn list_on(w: &World) -> Result<String> {
+    let r = w.kofi.call(w.registry.id(), "nft_transfer_call").args_json(json!({
+        "receiver_id": w.deed.id(), "token_id": w.name,
+        "msg": json!({"price_yocto": PRICE.as_yoctonear().to_string()}).to_string(),
+    })).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
+    if !r.receipt_failures().is_empty() { bail!("listing failed: {:?}", r.receipt_failures()); }
+    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
+    Ok(l["nonce"].as_str().unwrap().to_string())
+}
+
+async fn buy_on(w: &World, nonce: &str) -> Result<ExecutionFinalResult> {
+    Ok(w.maya.call(w.deed.id(), "buy").args_json(json!({
+        "token_id": w.name, "expected_price": PRICE.as_yoctonear().to_string(), "listing_nonce": nonce,
+    })).deposit(PRICE).gas(TX_GAS).transact().await?)
+}
+
+/// THREAT_MODEL C1 on real House of Stake bytecode: the registry refuses the escrow's transfer to the
+/// buyer (here: the registry is paused mid-sale), so the buyer must get every coin back in the same
+/// transaction and the listing must reopen.
+#[tokio::test]
+async fn failed_transfer_refunds_buyer_on_real_bytecode() -> Result<()> {
+    let w = world().await?;
+    let nonce = list_on(&w).await?;
+    w.council.call(w.registry.id(), "pause").gas(TX_GAS).transact().await?.into_result()?;
+    let before = balance(&w.worker, w.maya.id()).await?;
+    let r = buy_on(&w, &nonce).await?;
+    assert!(r.logs().iter().any(|l| l.contains("sale_failed_refunded")), "logs: {:?}", r.logs());
+    let spent = before - balance(&w.worker, w.maya.id()).await?;
+    assert!(spent < NearToken::from_millinear(50).as_yoctonear(), "buyer lost only gas, lost {spent}");
+    assert_eq!(owner_of(&w).await?, w.deed.id().as_str(), "the escrow still holds the name");
+    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
+    assert_eq!(l["state"]["kind"], "Active", "listing reopens");
+    // Once the registry runs again, the same listing sells normally.
+    w.council.call(w.registry.id(), "unpause").gas(TX_GAS).transact().await?.into_result()?;
+    buy_on(&w, l["nonce"].as_str().unwrap()).await?.into_result()?;
+    assert_eq!(owner_of(&w).await?, w.maya.id().as_str());
+    println!("PASS C1   registry refuses the transfer: buyer refunded in full, listing reopens, later sale works (real bytecode)");
+    Ok(())
+}
+
+/// The buyer resells the name to a third party before the seller's payment is released: the sale
+/// already completed, so the seller is still paid, and the third party keeps the name.
+#[tokio::test]
+async fn onward_transfer_before_claim_seller_still_paid_on_real_bytecode() -> Result<()> {
+    let w = world().await?;
+    let nonce = list_on(&w).await?;
+    buy_on(&w, &nonce).await?.into_result()?;
+    let r = w.maya.call(w.registry.id(), "transfer_sub_account")
+        .args_json(json!({"tla_id": w.tla, "name": "preflight", "new_owner": w.customer.id()}))
+        .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
+    if !r.receipt_failures().is_empty() { bail!("onward transfer failed: {:?}", r.receipt_failures()); }
+    assert_eq!(owner_of(&w).await?, w.customer.id().as_str());
+    let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
+    w.worker.fast_forward(10).await?;
+    let kofi_before = balance(&w.worker, w.kofi.id()).await?;
+    w.agent.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
+    assert_eq!(balance(&w.worker, w.kofi.id()).await? - kofi_before, PRICE.as_yoctonear() - royalty);
+    assert_eq!(owner_of(&w).await?, w.customer.id().as_str(), "the third party keeps the name");
+    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
+    assert!(l.is_null(), "no listing is created when the escrow doesn't hold the name");
+    println!("PASS C8   buyer resold before claim: seller paid, third party keeps the name (real bytecode)");
+    Ok(())
+}

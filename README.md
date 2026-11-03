@@ -67,7 +67,7 @@ Today one operator account (`deedhq.testnet`) runs the hosted Preflight runtime 
 | A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
 | Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
 | NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
-| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 25 tests incl. a sale in the middle of a paid job and payer authentication; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
+| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 26 tests incl. a sale in the middle of a paid job, payer authentication and replay after restart; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
 | "Try Preflight" page: free risk flags, pay the Deed from your wallet, get the signed explanation; a Jobs tab on each Deed page | **Built** | [web/src/pages/try.tsx](web/src/pages/try.tsx) |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
@@ -94,7 +94,7 @@ It downloads House of Stake's mainnet bytecode once (read-only RPC; [deploy/fetc
 ```
 test result: ok. 3 passed   (unit)
 test result: ok. 10 passed  (escrow edge cases, mock registry)
-test result: ok. 2 passed   (full sale + buyer-return case on mainnet bytecode)
+test result: ok. 4 passed   (on mainnet bytecode: full sale, failed transfer refund, buyer return, onward resale)
 ```
 To see each of the 19 checks of the real-bytecode sale:
 ```bash
@@ -146,11 +146,11 @@ Production build: `bun run build` (type-check + Vite build, output in `web/dist`
 (Or use the hosted one: `curl https://preflight-production-8802.up.railway.app/v1/health`. It runs [runtime/Dockerfile](runtime/Dockerfile) on Railway with a persistent volume for the job ledger, so replay protection survives redeploys. It holds no NEAR key: refunds are paid from the operator's machine with `RUNTIME_URL=<host> bun run refunds --yes`, and the server records a refund only after verifying the refund transaction on chain.)
 
 ```bash
-cd runtime && bun install && bun test     # 25 tests: sale mid-job, payer auth, replay, fail-closed, payment checks, TEE signature check, risk flags
+cd runtime && bun install && bun test     # 26 tests: sale mid-job, payer auth, replay (incl. after restart), fail-closed, payment checks, TEE signature check, risk flags
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
 curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
 ```
-**You will see** `25 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
+**You will see** `26 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
 
 ### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
@@ -230,7 +230,7 @@ Full model with actors and decisions: [THREAT_MODEL.md](THREAT_MODEL.md). "Sandb
 | B1 | Earnings stay in the account for the buyer | rotation sweeps to the outgoing payout (seller) | sandbox + testnet |
 | B3 | Payments made while listed go to the escrow | `buy`/`cancel` re-point payout to the seller before the rotation | sandbox + testnet |
 | B4 | Seller parks FTs to block the sale | registry refuses non-venue transfers of names holding allow-listed FTs; Deed earns in NEAR | mock |
-| C1 | Buyer pays, transfer fails | refund in `on_buy_resolved`, listing reopens | mock (forced failure) |
+| C1 | Buyer pays, transfer fails | refund in `on_buy_resolved`, listing reopens | **real bytecode** (registry paused mid-sale) + mock |
 | C2 | Underpayment | exact-price check | mock |
 | C4 | Price changed mid-purchase | `expected_price` + `listing_nonce` pinning | mock |
 | C5 | The name ends up back in the escrow after a sale | seller paid after a 5-min window (insurance: on deployed House of Stake code nothing can undo a completed transfer); a name back in escrow is recorded as the buyer's listing | testnet (early claim refused, payout after window) + mock |
@@ -417,7 +417,7 @@ docs/                        research (verified facts with source refs), spike r
 
 ## Testing strategy
 
-Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 25 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
+Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 26 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
 
 1. **Mock registry** ([escrow.rs](contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, a name reverted to the escrow, FT-blocked listing).
 2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.

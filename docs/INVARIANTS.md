@@ -30,9 +30,10 @@ Legend for **Proven on**:
 | B4 | A name holding allow-listed FTs can't be listed | HoS registry balance gate | Mock | Not run on real bytecode (needs an allow-listed FT on the replica) |
 | G5/C2 | Buyer pays exactly the listed price | deed `buy` | Testnet (tx), Mock | — |
 | C4 | Price/listing can't change under the buyer | deed `buy` (`expected_price`, `listing_nonce`) | Mock | — |
-| C1 | Failed transfer → full refund, listing reopens | deed `on_buy_resolved` | Mock (forced failure) | Not forced on real bytecode |
+| C1 | Failed transfer → full refund, listing reopens | deed `on_buy_resolved` | **Real** (registry paused mid-sale), Mock | — |
 | C5 | Seller paid after 5 min; if the name is back in escrow, it's the buyer's to take back | deed `claim_proceeds` / `on_claim_owner` | Testnet (early claim refused; payout after window), Mock (revert) | On deployed HoS code a completed transfer can't be undone; the window is insurance |
 | C7 | Buyer can't return the name for a refund | deed `on_claim_owner` | **Real**, Mock | — |
+| C8 | Buyer resells before the seller's payment is released → seller still paid, third party keeps the name | deed `on_claim_owner` | **Real** | — |
 | C6 | Proceeds can't be claimed twice | deed state before promise | Mock | Royalty transfer failure isn't retried (funds would stay in the escrow) |
 | — | Royalty ≤ 10%, paid to the fixed `royalty_account` | deed `new`, `on_claim_owner` | Real, Mock | `royalty_account` is the team (`deedhq.testnet`) |
 
@@ -41,7 +42,7 @@ Legend for **Proven on**:
 | # | Invariant | Whose code | Proven on | Limitation |
 |---|---|---|---|---|
 | D6 | Only the payer can use a payment, for the request they signed (NEP-413) | runtime `submitJob` + `nep413.ts` | Unit; Testnet (hosted runtime: impersonation → 401); format cross-checked with `near message sign-nep413` | — |
-| D4 | One payment = one job, including simultaneous submissions | runtime ledger + in-flight guard | Unit; Testnet (hosted: replay → 409) | Single runtime instance; two instances sharing one payment aren't coordinated |
+| D4 | One payment = one job, including simultaneous submissions and across restarts | runtime ledger on disk (Railway volume) + in-flight guard | Unit (incl. restart with a fresh store on the same file); Testnet (hosted: replay → 409 after redeploys) | **Single runtime instance.** Two instances with separate ledgers could each accept the same payment once; run one instance per ledger (Railway runs one) |
 | D2 | Served only if current owner = activation owner, activation names this runtime and this config | runtime `isEntitled` | Unit; Testnet (jobs accepted under v3 only) | — |
 | D1 | Sold mid-job: delivered once, both owners recorded; paid before a sale → refund | runtime `submitJob` / `serve` | Unit | Not reproduced live (needs a sale timed inside an inference call) |
 | D5 | RPC trouble → refuse, record nothing | runtime | Unit | — |

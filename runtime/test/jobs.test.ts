@@ -4,6 +4,10 @@ import { describe, expect, test } from "bun:test"
 import { ed25519 } from "@noble/curves/ed25519.js"
 import { resumeAwaiting, submitJob, type Activation, type Answer, type Chain, type Deps, type Job, type JobInput, type Payment } from "../src/jobs"
 import { base58Encode, jobMessage, RECIPIENT, signNep413 } from "../src/nep413"
+import { fileStore } from "../src/store"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 const NAME = "preflight.deedbot.deedhq.testnet"
 const RUNTIME = "deedhq.testnet"
@@ -254,6 +258,21 @@ describe("payer authentication (NEP-413)", () => {
     const good = signed({ name: NAME, payment_tx: tx, sender: "alice.testnet", request: REQ })
     const swapped = { ...good, request: { receiver_id: "other.testnet", actions: [{ type: "Transfer", params: { deposit: "2" } }] } }
     expect((await submitJob(d, swapped)).http).toBe(401)
+  })
+})
+
+describe("D4 across restarts", () => {
+  test("a used payment stays used after the runtime restarts (ledger on disk)", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "deed-ledger-")), "jobs.json")
+    const w = new World()
+    const tx = w.pay(30, T0 - 1_000)
+    const first = { ...deps(w), store: fileStore(file) }
+    expect((await submit(first, tx)).http).toBe(200)
+    // "Restart": a brand-new store reading the same file, as after a redeploy with a persistent volume.
+    const second = { ...deps(w), store: fileStore(file) }
+    const again = await submit(second, tx)
+    expect(again.http).toBe(409)
+    expect(again.job?.status).toBe("served")
   })
 })
 
