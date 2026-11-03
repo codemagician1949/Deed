@@ -1,0 +1,252 @@
+{
+  "network": "testnet",
+  "name": "preflight.deedbot.deedhq.testnet",
+  "ran_at": "2026-11-03T03:01:38.000540Z",
+  "passed": true,
+  "failures": 0,
+  "steps": [
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller adds their AI agent as an extension",
+      "tx": "CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC",
+      "error": null
+    },
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller adds a second co-owner (a hidden back door)",
+      "tx": "2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL",
+      "error": null
+    },
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller grants their agent a capped spend (0.1 NEAR, to the seller only)",
+      "tx": "2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A",
+      "error": null
+    },
+    {
+      "row": "earn",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "A customer pays 0.1 NEAR into the name",
+      "tx": "Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe",
+      "error": null
+    },
+    {
+      "row": "pre",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller's agent spends within its grant",
+      "tx": "1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu",
+      "error": null
+    },
+    {
+      "row": "pre",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller can sign in as the name (NEP-641)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A5",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller's agent tries to sign in as the name",
+      "tx": null,
+      "error": "panicked: a spend grantee cannot authorise as an owner"
+    },
+    {
+      "row": "list",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller lists: the name moves into the escrow",
+      "tx": "BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3",
+      "error": null
+    },
+    {
+      "row": "B1",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "earn",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "A customer pays 0.1 NEAR into the name while it is listed",
+      "tx": "EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV",
+      "error": null
+    },
+    {
+      "row": "buy",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The buyer pays exactly the price; the escrow hands them the name",
+      "tx": "EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh",
+      "error": null
+    },
+    {
+      "row": "G5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Registry says the buyer (kofi.deedhq.testnet) owns the name",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "B3",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Money paid in while listed reached the seller at the sale (+0.1016 NEAR)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A1",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller's agent tries to spend",
+      "tx": null,
+      "error": "panicked: extension 'maya-agent.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller's hidden co-owner tries to move money",
+      "tx": null,
+      "error": "panicked: extension 'maya-partner.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to move money themselves",
+      "tx": null,
+      "error": "panicked: extension 'maya.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A3",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to re-grant their agent",
+      "tx": null,
+      "error": "panicked: only the owner may perform this operation"
+    },
+    {
+      "row": "A4",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to sign in as the name",
+      "tx": null,
+      "error": "panicked: named account is not an owner of this account"
+    },
+    {
+      "row": "A4",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The buyer can sign in as the name",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A6",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to sell the name again",
+      "tx": null,
+      "error": "panicked: {\"code\":\"only_owner\"}"
+    },
+    {
+      "row": "A7",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The name has 0 access keys: nobody can sign as it",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "D2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to switch the service back on",
+      "tx": null,
+      "error": "panicked: only the current owner of the name can activate it"
+    },
+    {
+      "row": "G1",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "hos_agent_status: agent disabled, grant gone",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "D2",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The buyer activates the service under their name",
+      "tx": "7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o",
+      "error": null
+    },
+    {
+      "row": "C5",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "The seller tries to take the money inside the 5-minute window",
+      "tx": null,
+      "error": "panicked: revert window still open; try again after final_after_ns"
+    },
+    {
+      "row": "C5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "After the window, anyone triggers payment",
+      "tx": "BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp",
+      "error": null
+    },
+    {
+      "row": "G5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The seller received exactly price minus 2.5% royalty (0.975 NEAR)",
+      "tx": null,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,243 @@
+{
+  "network": "testnet",
+  "name": "preflight.deedbot.deedhq.testnet",
+  "ran_at": "2026-11-03T02:53:46.519098Z",
+  "passed": false,
+  "failures": 1,
+  "steps": [
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi adds his AI agent as an extension",
+      "tx": "8pqvmSdLWXZEthkEJUe58XPHZ83j29vTvqoQugq6WMm1",
+      "error": null
+    },
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi adds a second co-owner (a hidden back door)",
+      "tx": "6EqhmJyYNvVMLwjc4wPZcX5cEkaqQ4s9mkKLy7MFsRRz",
+      "error": null
+    },
+    {
+      "row": "setup",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi grants his agent a capped spend (0.1 NEAR, to Kofi only)",
+      "tx": "4U9HyJFv89k55QWcbQG69k7pbM72xkjiHPDUSC9Y2Xgg",
+      "error": null
+    },
+    {
+      "row": "earn",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "A customer pays 0.1 NEAR into the name",
+      "tx": "5dcJYmYsyPdi6T2AQSeHUncgvptSraH4damkwAMkAy9U",
+      "error": null
+    },
+    {
+      "row": "pre",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi's agent spends within its grant",
+      "tx": "H9faBLof2A3X6pa1zsZutu82uwnJkx2EnR5QFLbcX5iW",
+      "error": null
+    },
+    {
+      "row": "pre",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi can sign in as the name (NEP-641)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A5",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi's agent tries to sign in as the name",
+      "tx": null,
+      "error": "wasm execution failed with error: HostError(GuestPanic { panic_msg: \"a spend grantee cannot authorise as an owner\" })"
+    },
+    {
+      "row": "list",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi lists: the name moves into the escrow",
+      "tx": "DcZBK2k5kCpb9g7qKW7QrxfeCKSc7yzha8jBckKXMbC9",
+      "error": null
+    },
+    {
+      "row": "B1",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi's earnings swept to Kofi at listing (+0.0856 NEAR net of fees)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "B3",
+      "expect": "ok",
+      "got": "fail",
+      "verdict": "FAIL",
+      "what": "While listed, payouts point at Kofi (payout=deed.deedhq.testnet)",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "buy",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Maya pays exactly the price; the escrow hands her the name",
+      "tx": "E6sefGXdX7LYKs71GtkkzDZ6JbjPpv4kKeYyGbkNe2x",
+      "error": null
+    },
+    {
+      "row": "G5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Registry says Maya owns the name",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A1",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi's agent tries to spend",
+      "tx": null,
+      "error": "panicked: extension 'kofi-agent.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi's hidden co-owner tries to move money",
+      "tx": null,
+      "error": "panicked: extension 'kofi-partner.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to move money himself",
+      "tx": null,
+      "error": "panicked: extension 'kofi.deedhq.testnet' is not enabled"
+    },
+    {
+      "row": "A3",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to re-grant his agent",
+      "tx": null,
+      "error": "panicked: only the owner may perform this operation"
+    },
+    {
+      "row": "A4",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to sign in as the name",
+      "tx": null,
+      "error": "wasm execution failed with error: HostError(GuestPanic { panic_msg: \"named account is not an owner of this account\" })"
+    },
+    {
+      "row": "A4",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Maya can sign in as the name",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "A6",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to sell the name again",
+      "tx": null,
+      "error": "panicked: {\\"
+    },
+    {
+      "row": "A7",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "The name has 0 access keys: nobody can sign as it",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "D2",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to switch the service back on",
+      "tx": null,
+      "error": "panicked: only the current owner of the name can activate it"
+    },
+    {
+      "row": "G1",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "hos_agent_status: agent disabled, grant gone",
+      "tx": null,
+      "error": null
+    },
+    {
+      "row": "D2",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Maya activates the service under her name",
+      "tx": "EJZkNTHGQhZ3StZw1WMmzcXCFWpmuAWRGhPXBTnbhyze",
+      "error": null
+    },
+    {
+      "row": "C5",
+      "expect": "fail",
+      "got": "fail",
+      "verdict": "PASS",
+      "what": "Kofi tries to take the money inside the 5-minute window",
+      "tx": null,
+      "error": "panicked: revert window still open; try again after final_after_ns"
+    },
+    {
+      "row": "C5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "After the window, anyone triggers payment",
+      "tx": "3fBYvukynUk2zhuZ7f5fMk2cYXP4DLKaQtsojK1FdhHt",
+      "error": null
+    },
+    {
+      "row": "G5",
+      "expect": "ok",
+      "got": "ok",
+      "verdict": "PASS",
+      "what": "Kofi received exactly price minus 2.5% royalty (0.975 NEAR)",
+      "tx": null,
+      "error": null
+    }
+  ]
+}
