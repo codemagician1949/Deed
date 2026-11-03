@@ -7,3 +7,6 @@ target/
 *.wasm
 dist/
 .DS_Store
+
+# House of Stake mainnet bytecode is vendored on purpose (public, hash-checked by the tests and deploy script)
+!deploy/mainnet-wasm/*.wasm

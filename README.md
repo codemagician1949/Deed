@@ -10,6 +10,22 @@
 
 ---
 
+## See it in 2 minutes (no install)
+
+1. Open **https://deed-near.vercel.app/deed/preflight.deedbot.deedhq.testnet**. Under **History**, every line is a real testnet transaction: two sales between Kofi and Maya, the wallet wiping the seller's permissions, earnings paid out, and each rejected attempt by the old owner, with the chain's own error text. **Jobs answered** shows paid Preflight answers with their enclave-signature checks.
+2. Open **https://deed-near.vercel.app/proof**: the live sale's attack run, one row per attempt, linked to its transaction.
+3. Open **https://deed-near.vercel.app/try**: edit a transaction and watch the free risk flags (served by the hosted runtime). Paying for an explanation needs a NEAR testnet wallet.
+
+## Verify it in 5 minutes
+
+```bash
+git clone https://github.com/codemagician1949/Deed && cd Deed
+python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app   # ~30 s, no wallet, no NEAR
+```
+**You will see** `ALL CHECKS PASS`: our testnet House of Stake contracts have the same code hashes as live mainnet; every transaction in the published sale report exists on chain with the outcome the report claims (7 attacks rejected, 10 steps accepted); and the hosted runtime serves exactly the config the Deed's on-chain activation names. Then `contract/test.sh` (about 5 min, offline after the Rust build: the mainnet bytecode is vendored and hash-checked) and `cd runtime && bun install && bun test` (seconds). Full evidence: [docs/EVIDENCE.md](docs/EVIDENCE.md) · [docs/INVARIANTS.md](docs/INVARIANTS.md).
+
+---
+
 ## Contents
 1. [The problem](#the-problem)
 2. [What is real today](#what-is-real-today)
@@ -18,18 +34,16 @@
 5. [The exact security claim](#the-exact-security-claim)
 6. [Threat model and proof](#threat-model-and-proof)
 7. [Live deployment (NEAR testnet)](#live-deployment-near-testnet)
-8. [Live sale on testnet: results](#live-sale-on-testnet-results)
+8. [Live sale and Preflight results](docs/EVIDENCE.md)
 9. [Contract reference](#contract-reference)
 10. [The Preflight service (runtime)](#the-preflight-service-runtime)
 11. [Web app](#web-app)
 12. [Repository layout](#repository-layout)
 13. [NEAR features used (with file paths)](#near-features-used-with-file-paths)
-14. [Testing strategy](#testing-strategy)
-15. [Bugs our tests caught](#bugs-our-tests-caught)
-16. [Prior art and what is different](#prior-art-and-what-is-different)
-17. [Roadmap (not built yet)](#roadmap-not-built-yet)
-18. [Libraries, AI-written code and baseline](#libraries-ai-written-code-and-baseline)
-19. [Team and other submissions](#team-and-other-submissions)
+14. [Prior art and what is different](#prior-art-and-what-is-different)
+15. [Roadmap (not built yet)](#roadmap-not-built-yet)
+16. [Libraries, AI-written code and baseline](#libraries-ai-written-code-and-baseline)
+17. [Team and other submissions](#team-and-other-submissions)
 
 ---
 
@@ -64,10 +78,10 @@ Today one operator account (`deedhq.testnet`) runs the hosted Preflight runtime 
 | Sale tested against the **exact House of Stake bytecode that runs on mainnet** (hash-checked), 19 checks | **Passing** | [contract/deed/tests/real_fleet.rs](contract/deed/tests/real_fleet.rs) |
 | Escrow edge cases (forced transfer failure, name back in escrow after a sale, buyer returning the name, wrong price, stale listing, FT-blocked listing, double claim), 10 tests; the buyer-return case also runs on the real bytecode | **Passing** | [contract/deed/tests/escrow.rs](contract/deed/tests/escrow.rs) |
 | House of Stake TLA replica on testnet from mainnet bytecode (all code hashes equal mainnet) | **Live** | [deploy/testnet.json](deploy/testnet.json) |
-| A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](#live-sale-on-testnet-results)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
+| A real Deed on testnet, sold live, with the seller's attacks run on-chain | **Done** (see [results](docs/EVIDENCE.md)) | [verify/testnet-sale.sh](verify/testnet-sale.sh), [verify/report-testnet.json](verify/report-testnet.json) |
 | Web app on **live testnet data**: browse, per-Deed title page with full on-chain history (owners, payments, sweeps, wiped permissions, blocked misuse attempts, each with a tx link), safety-proof page with the live report | **Done** | [web/src/lib/live.ts](web/src/lib/live.ts), [web/src/pages/deed.tsx](web/src/pages/deed.tsx) |
 | NEAR wallet (NEAR Connect, testnet): buy, list, cancel, release the seller's payment, switch the service on; owner console that opens only for the current registry owner | **Built** (same contract calls as the live verifier; a signed in-browser run needs a person with a testnet wallet) | [web/src/lib/wallet.tsx](web/src/lib/wallet.tsx), [web/src/lib/actions.ts](web/src/lib/actions.ts) |
-| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 26 tests incl. a sale in the middle of a paid job, payer authentication and replay after restart; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
+| **Preflight runtime**: paid per job in NEAR to the Deed's own account; per-job live owner + activation + config-fingerprint check (no cache, fail closed); NEAR AI verifiable inference with the enclave signature checked locally; one payment = one job; operator refunds | **Live on testnet**: 26 tests incl. a sale in the middle of a paid job, payer authentication and replay after restart; real paid jobs answered with the enclave signature verified (hashes, signer, attestation), plus refunds; see [Live Preflight jobs](docs/EVIDENCE.md#live-preflight-jobs-near-testnet) | [runtime/](runtime/) |
 | "Try Preflight" page: free risk flags, pay the Deed from your wallet, get the signed explanation; a Jobs tab on each Deed page | **Built** | [web/src/pages/try.tsx](web/src/pages/try.tsx) |
 
 Nothing in this README claims more than the tests show. Every security sentence maps to a threat-model row and a check.
@@ -86,11 +100,11 @@ Nothing in this README claims more than the tests show. Every security sentence 
 git clone https://github.com/codemagician1949/Deed && cd Deed
 ```
 
-### 1. Run every contract test (no account, no network spend)
+### 1. Run every contract test (no account, no network spend; House of Stake bytecode is vendored in `deploy/mainnet-wasm`)
 ```bash
 contract/test.sh
 ```
-It downloads House of Stake's mainnet bytecode once (read-only RPC; [deploy/fetch-mainnet-wasm.sh](deploy/fetch-mainnet-wasm.sh)), builds `deed`, and runs three suites in a local NEAR sandbox. **You will see:**
+It uses the vendored House of Stake mainnet bytecode ([deploy/mainnet-wasm](deploy/mainnet-wasm/), hashes in `HASHES.txt`; refresh with [deploy/fetch-mainnet-wasm.sh](deploy/fetch-mainnet-wasm.sh)), builds `deed`, and runs three suites in a local NEAR sandbox. **You will see:**
 ```
 test result: ok. 3 passed   (unit)
 test result: ok. 10 passed  (escrow edge cases, mock registry)
@@ -263,52 +277,6 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 ---
 
-## Live sale on testnet: results
-
-Run of [verify/testnet-sale.sh](verify/testnet-sale.sh) on **2026-11-03 03:01 UTC**, name `preflight.deedbot.deedhq.testnet` (seller `maya.deedhq.testnet`, buyer `kofi.deedhq.testnet`, price 1 NEAR). Result: **ALL PASS**: 9/9 attack attempts rejected with the expected error. Seven were **transactions** (each linked, with the attacking account and method; the chain rejected the receipt), two were **view calls** that panicked (NEP-641 sign-in), and the rest are **state reads** (owner, balances, keys). This is one scripted, team-run scenario: a bounded test, not proof that every transfer is secure. Raw report: [verify/report-testnet.json](verify/report-testnet.json). Earlier runs are kept unedited in [verify/runs/](verify/runs/) (run 2 had one failing row, an outdated B3 check written for the pre-fix payout design; the contract behaved correctly). Attack tx hashes are looked up on chain by [verify/backfill-tx.py](verify/backfill-tx.py), because near-cli-rs prints no tx id for failed transactions.
-
-| Row | Step | Kind | Result (on-chain error for attacks) | Verdict | Transaction |
-|---|---|---|---|---|---|
-| setup | The seller adds their AI agent as an extension | transaction | ok | PASS | [`CR2yYG8N…`](https://testnet.nearblocks.io/txns/CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC) |
-| setup | The seller adds a second co-owner (a hidden back door) | transaction | ok | PASS | [`2bPkGQER…`](https://testnet.nearblocks.io/txns/2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL) |
-| setup | The seller grants their agent a capped spend (0.1 NEAR, to the seller only) | transaction | ok | PASS | [`2s6frdSD…`](https://testnet.nearblocks.io/txns/2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A) |
-| earn | A customer pays 0.1 NEAR into the name | transaction | ok | PASS | [`Hai8ysgG…`](https://testnet.nearblocks.io/txns/Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe) |
-| pre | The seller's agent spends within its grant | transaction | ok | PASS | [`1dEFEs4u…`](https://testnet.nearblocks.io/txns/1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu) |
-| pre | The seller can sign in as the name (NEP-641) | view call | ok | PASS | — |
-| A5 | The seller's agent tries to sign in as the name | view call | **blocked**: `panicked: a spend grantee cannot authorise as an owner` | PASS | — |
-| list | The seller lists: the name moves into the escrow | transaction | ok | PASS | [`BT5WAwu6…`](https://testnet.nearblocks.io/txns/BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3) |
-| B1 | The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees) | state read | ok | PASS | — |
-| earn | A customer pays 0.1 NEAR into the name while it is listed | transaction | ok | PASS | [`EdBuBTeh…`](https://testnet.nearblocks.io/txns/EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV) |
-| buy | The buyer pays exactly the price; the escrow hands them the name | transaction | ok | PASS | [`EnpYudm2…`](https://testnet.nearblocks.io/txns/EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh) |
-| G5 | Registry says the buyer (kofi.deedhq.testnet) owns the name | state read | ok | PASS | — |
-| B3 | Money paid in while listed reached the seller at the sale (+0.1016 NEAR) | state read | ok | PASS | — |
-| A1 | The seller's agent tries to spend (`maya-agent.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-agent.deedhq.testnet' is not enabled` | PASS | [`HxNQgNef…`](https://testnet.nearblocks.io/txns/HxNQgNef9XyLeq6Wi4rmTz4tXwiFgid697tW7a6Z6u9F) |
-| A2 | The seller's hidden co-owner tries to move money (`maya-partner.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-partner.deedhq.testnet' is not enabled` | PASS | [`5rAnst8X…`](https://testnet.nearblocks.io/txns/5rAnst8XaY5w9ZLP2M7ym2gS141SVcAYfNK5XnPgkC9o) |
-| A2 | The seller tries to move money themselves (`maya.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya.deedhq.testnet' is not enabled` | PASS | [`89D4CpB6…`](https://testnet.nearblocks.io/txns/89D4CpB6nXxGK7aQkm799oTfg4134fjqn2feUJjMmLTK) |
-| A3 | The seller tries to re-grant their agent (`maya.deedhq.testnet` → `hos_grant_spend`) | transaction | **blocked**: `panicked: only the owner may perform this operation` | PASS | [`5swvNdij…`](https://testnet.nearblocks.io/txns/5swvNdijTS51fyYop4ZEAL1zvpEpgePkBpyN4EU5a3ze) |
-| A4 | The seller tries to sign in as the name | view call | **blocked**: `panicked: named account is not an owner of this account` | PASS | — |
-| A4 | The buyer can sign in as the name | view call | ok | PASS | — |
-| A6 | The seller tries to sell the name again (`maya.deedhq.testnet` → `transfer_sub_account`) | transaction | **blocked**: `panicked: {"code":"only_owner"}` | PASS | [`7KmgmY3P…`](https://testnet.nearblocks.io/txns/7KmgmY3PfLgtxw61iS43TDHG1NMpBaj6yB2Up1FARxWG) |
-| A7 | The name has 0 access keys: nobody can sign as it | state read | ok | PASS | — |
-| D2 | The seller tries to switch the service back on (`maya.deedhq.testnet` → `activate`) | transaction | **blocked**: `panicked: only the current owner of the name can activate it` | PASS | [`3igFiWEA…`](https://testnet.nearblocks.io/txns/3igFiWEAS5quztSSq1uxud6ujiYFtgQinabT5wWRV2va) |
-| G1 | hos_agent_status: agent disabled, grant gone | state read | ok | PASS | — |
-| D2 | The buyer activates the service under their name | transaction | ok | PASS | [`7WHhr3Fm…`](https://testnet.nearblocks.io/txns/7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o) |
-| C5 | The seller tries to take the money inside the 5-minute window (`maya.deedhq.testnet` → `claim_proceeds`) | transaction | **blocked**: `panicked: revert window still open; try again after final_after_ns` | PASS | [`2RsMf89f…`](https://testnet.nearblocks.io/txns/2RsMf89ffbBBhaiWAajNzotdqdxNyyCNq3R8tPR5oJMe) |
-| C5 | After the window, anyone triggers payment | transaction | ok | PASS | [`BuMALMxS…`](https://testnet.nearblocks.io/txns/BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp) |
-| G5 | The seller received exactly price minus 2.5% royalty (0.975 NEAR) | state read | ok | PASS | — |
-
-### Live Preflight jobs (NEAR testnet)
-
-Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by the runtime ([ledger snapshot](verify/preflight-jobs-testnet.json); also on the Deed page's **Jobs answered** tab). "attested" = the recovered signer is listed in NEAR AI's attestation report for `z-ai/glm-5.3-flash` (Intel TDX quote + NVIDIA evidence).
-
-| Payment | Transaction asked about (high-risk flags) | Accepted under | Result | Enclave signature |
-|---|---|---|---|---|
-| [`A1HG8Q8e…`](https://testnet.nearblocks.io/txns/A1HG8Q8en19mEquvX4ABVMUUhoYXDeAfgnFRppzNqjfp) | moves_assets, value | v2 under `kofi.deedhq.testnet` | refunded ([`BQnX4x4H…`](https://testnet.nearblocks.io/txns/BQnX4x4HAz6Qo9wNuc2K8Ru6V2E5a4JGxwaE4vgYuyqA)): no API key yet | — |
-| [`G9CCLRZP…`](https://testnet.nearblocks.io/txns/G9CCLRZPtasZUVK1f2hdrhdMhK4A8b6uMCn2jzU7dQ5G) | full_access_key | v3 under `kofi.deedhq.testnet` | refunded ([`FQeA19mC…`](https://testnet.nearblocks.io/txns/FQeA19mCU87x9GLxXxyRturT8sGLJDTm64ZHnMdkiYrM)): no API key yet | — |
-| [`ELo6ZUbG…`](https://testnet.nearblocks.io/txns/ELo6ZUbGs9QejdnCiyWqVtd6XJfMh557ziWXxM8ZRYtm) | unlimited_approval | v3 under `kofi.deedhq.testnet` | answered: **DO NOT SIGN** | hashes ✓ · signer ✓ |
-| [`CNffZWAF…`](https://testnet.nearblocks.io/txns/CNffZWAFngGdasRtVULuWAa8pa9N1xJjVK8xKzYTvYu6) | full_access_key | v3 under `kofi.deedhq.testnet` | answered: **CHECK FIRST** | hashes ✓ · signer ✓ · attested ✓ |
-
----
 
 ## Contract reference
 
@@ -375,6 +343,7 @@ How history is built ([web/src/lib/live.ts](web/src/lib/live.ts)): fetch every t
 ```
 THREAT_MODEL.md              threat model, written before code
 contract/
+  rust-toolchain.toml        pinned Rust 1.97.1 + wasm target
   deed/src/lib.rs            the Deed contract (activation, escrow, royalty, events)
   deed/tests/escrow.rs       10 sandbox tests vs the mock registry (forced failures, name returned to escrow, pricing)
   deed/tests/real_fleet.rs   full sale vs House of Stake MAINNET bytecode, 19 checks, 300 Tgas cap
@@ -388,11 +357,13 @@ deploy/
 verify/
   testnet-sale.sh            live sale + attack matrix on testnet
   report-testnet.json        latest live report
+  check-testnet.py           free read-only check of the live deployment and report
   runs/                      earlier live reports, kept unedited
 runtime/                     the Preflight service (Bun): job rules, NEAR AI inference + signature check, refunds
   preflight.config.json      the public service config; its sha256 is the activation fingerprint
 web/                         the web app
-docs/                        research (verified facts with source refs), spike results, track prompt, rules
+docs/                        EVIDENCE.md, INVARIANTS.md, research (verified facts with source refs), spike results, track prompt, rules
+.github/workflows/ci.yml     contract suite, runtime tests, web build, live read-only check
 ```
 
 ---
@@ -415,26 +386,7 @@ docs/                        research (verified facts with source refs), spike r
 
 ---
 
-## Testing strategy
 
-Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](runtime/test/): 26 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
-
-1. **Mock registry** ([escrow.rs](contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, a name reverted to the escrow, FT-blocked listing).
-2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.
-3. **Live testnet** ([verify/testnet-sale.sh](verify/testnet-sale.sh)): the same sale and attacks as real transactions; each attack must fail with its expected error; results go to [verify/report-testnet.json](verify/report-testnet.json) and the `/proof` page.
-
----
-
-## Bugs our tests caught
-
-- **Payment theft (D6), found in external review.** The runtime trusted `{payment_tx, sender}` from the caller, so anyone who saw a public payment could submit it first with their own question. Each job is now signed by the payer (NEP-413) and checked against the payer's on-chain keys.
-- **Free rental (C7), found while answering review.** v1's `claim_proceeds` treated "the escrow owns the name again" as a House of Stake revert and refunded the buyer, but a buyer could create that state by sending the name back. Reading House of Stake's code showed no admin undo exists for a completed transfer, so the seller is now always paid; the case is tested on the real bytecode.
-
-- **Two processes, one ledger.** The refund tool recorded a refund while the runtime server held an older in-memory copy of the job ledger that it would have written back. The store now re-reads the file on every operation and writes atomically.
-- **Listing ran out of gas on testnet.** The first version re-pointed payout inside `nft_on_transfer`. The registry gives that hook a fixed 25 Tgas; the payout call needs about 45, so the receipt failed and the registry correctly returned the name to the seller. The sandbox didn't catch it because it allows more gas per transaction. Fix: the hook only records state; `buy`/`cancel` re-point payout before the transfer. The sandbox test now uses the 300 Tgas cap. (Commit: "fix: re-point payout in buy/cancel…")
-- **Verifier false positives.** An early verifier counted any failure as "attack blocked". It now requires the expected error text, and stops if the sale itself didn't happen.
-
----
 
 ## Prior art and what is different
 

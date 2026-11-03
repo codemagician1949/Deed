@@ -1,0 +1,79 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contract:
+    name: contract (unit + mock registry + mainnet House of Stake bytecode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (pinned in contract/rust-toolchain.toml)
+        working-directory: contract
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+      - name: cargo-near 0.22.0
+        run: cargo install cargo-near --version 0.22.0 --locked
+      - name: Vendored mainnet bytecode matches recorded hashes
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+          def b58(b):
+              n=int.from_bytes(b,'big'); s=''
+              while n: n,r=divmod(n,58); s=A[r]+s
+              return s
+          bad=0
+          for line in open('deploy/mainnet-wasm/HASHES.txt'):
+              if line.startswith('#') or not line.strip(): continue
+              f,h=line.split()[:2]
+              got=b58(hashlib.sha256(open('deploy/mainnet-wasm/'+f,'rb').read()).digest())
+              print(('ok ' if got==h else 'MISMATCH ')+f, got); bad+= got!=h
+          raise SystemExit(bad)
+          PY
+      - name: Build and test (contract/test.sh)
+        run: contract/test.sh
+
+  runtime:
+    name: runtime (Preflight job rules, NEP-413, TEE signature checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - working-directory: runtime
+        run: |
+          bun install --frozen-lockfile
+          bunx tsc --noEmit
+          bun test
+
+  web:
+    name: web (type-check + production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+  live-testnet:
+    name: live testnet deployment (read-only, no keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Depends on public RPCs; informative, doesn't block merges.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app
