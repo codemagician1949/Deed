@@ -11,6 +11,7 @@
 //     once they do, refund_due after 24 h.
 //   - Inference fails => refund_due.
 //   - One payment, one job: the payment tx hash is the job id (D4).
+import { jobMessage, RECIPIENT, verifyNep413 } from "./nep413"
 import { riskFlags, type ProposedTx, type RiskFlag } from "./risk"
 import type { SignatureCheck } from "./tee"
 
@@ -36,6 +37,8 @@ export interface Chain {
   payment(txHash: string, sender: string): Promise<Payment | null>
   /** Block time (ns) of the latest ownership change of the name, 0n if never moved. */
   lastRotationNs(name: string): Promise<bigint>
+  /** Whether publicKey ("ed25519:...") is a full-access key of account right now. */
+  hasFullAccessKey(account: string, publicKey: string): Promise<boolean>
 }
 export interface Answer {
   explanation: string
@@ -92,6 +95,8 @@ export interface JobInput {
   payment_tx: string
   sender: string
   request: ProposedTx
+  /** NEP-413 signature by the sender over jobMessage(name, payment_tx, request). */
+  auth?: { public_key: string; signature: string; nonce: string /* base64, 32 bytes */ }
 }
 export interface JobResult {
   http: number
@@ -127,6 +132,26 @@ async function submitJobInner(d: Deps, input: JobInput): Promise<JobResult> {
     return { http: 400, error: "request must be {receiver_id, actions[]} describing the transaction you want explained." }
   }
 
+  // The caller must prove they control the paying account and bind this payment to this request.
+  const auth = input.auth
+  let nonce: Uint8Array | null = null
+  try {
+    nonce = auth?.nonce ? Uint8Array.from(Buffer.from(auth.nonce, "base64")) : null
+  } catch {
+    nonce = null
+  }
+  if (!auth || !nonce || nonce.length !== 32) {
+    return { http: 401, error: `Sign the job with the paying account (NEP-413, recipient "${RECIPIENT}") and send auth {public_key, signature, nonce}.` }
+  }
+  const signedOk = verifyNep413({
+    message: jobMessage(input.name, input.payment_tx, input.request),
+    nonce,
+    recipient: RECIPIENT,
+    publicKey: auth.public_key,
+    signature: auth.signature,
+  })
+  if (!signedOk) return { http: 401, error: "The signature doesn't match this payment and request. Sign the exact job message." }
+
   // D4: one payment, one job.
   const existing = d.store.get(input.payment_tx)
   if (existing) {
@@ -134,6 +159,15 @@ async function submitJobInner(d: Deps, input: JobInput): Promise<JobResult> {
   }
 
   // Fresh chain reads; any failure => refuse without recording anything (D5).
+  // Cheapest check first: the signing key must belong to the claimed payer (one fast RPC read).
+  try {
+    if (!(await d.chain.hasFullAccessKey(input.sender, auth.public_key))) {
+      return { http: 401, error: `${auth.public_key} is not a full-access key of ${input.sender}.` }
+    }
+  } catch (e) {
+    return { http: 503, error: `Can't verify your key right now (${e instanceof Error ? e.message : e}). Nothing was recorded; try again.` }
+  }
+
   let owner: string | null, activation: Activation | null, payment: Payment | null, rotation: bigint
   try {
     ;[owner, activation, payment, rotation] = await Promise.all([

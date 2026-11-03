@@ -28,6 +28,8 @@ interface WalletState {
   call: (p: CallParams) => Promise<string>
   /** Sends NEAR to an account and returns the transaction hash. */
   transfer: (receiverId: string, yocto: string) => Promise<string>
+  /** NEP-413 signature by the connected account (proves who is asking). */
+  signMessage: (message: string, recipient: string) => Promise<{ public_key: string; signature: string; nonce: string }>
 }
 
 const Ctx = createContext<WalletState | null>(null)
@@ -119,6 +121,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [account, preview],
   )
 
+  const signMessage = useCallback(
+    async (message: string, recipient: string) => {
+      if (preview) throw new Error("Preview mode can't sign. Connect a NEAR testnet wallet.")
+      const c = connectorRef.current
+      if (!c || !account) throw new Error("Connect a NEAR testnet wallet first.")
+      const wallet = await c.wallet()
+      const nonce = crypto.getRandomValues(new Uint8Array(32))
+      const signed = await wallet.signMessage({ message, recipient, nonce, signerId: account } as never)
+      const s = signed as unknown as { publicKey: string; signature: string; accountId: string }
+      if (s.accountId && s.accountId !== account) throw new Error(`Signed by ${s.accountId}, not ${account}.`)
+      return { public_key: s.publicKey, signature: s.signature, nonce: btoa(String.fromCharCode(...nonce)) }
+    },
+    [account, preview],
+  )
+
   const value = useMemo<WalletState>(
     () => ({
       account,
@@ -128,12 +145,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       disconnect,
       call,
       transfer,
+      signMessage,
       previewAs: (a) => {
         setAccount(a)
         setPreview(true)
       },
     }),
-    [account, preview, ready, connect, disconnect, call, transfer],
+    [account, preview, ready, connect, disconnect, call, transfer, signMessage],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

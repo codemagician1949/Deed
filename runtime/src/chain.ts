@@ -68,6 +68,20 @@ export const chain: Chain = {
       success: !!r.status && "SuccessValue" in r.status && transfers.length > 0,
     }
   },
+  async hasFullAccessKey(account, publicKey) {
+    try {
+      const k = await rpc<{ permission: unknown }>("query", {
+        request_type: "view_access_key",
+        finality: "final",
+        account_id: account,
+        public_key: publicKey,
+      })
+      return k.permission === "FullAccess"
+    } catch (e) {
+      if (/UNKNOWN_ACCESS_KEY|UNKNOWN_ACCOUNT/.test(String((e as { rpcName?: string }).rpcName ?? e))) return false
+      throw e
+    }
+  },
   async lastRotationNs(name) {
     const list = await fetch(`${CONFIG.txApi}/v0/account`, {
       method: "POST",

@@ -7,7 +7,8 @@
     "start": "bun run src/server.ts",
     "test": "bun test",
     "refunds": "bun run src/refunds.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ask": "bun run src/ask.ts"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

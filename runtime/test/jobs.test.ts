@@ -1,7 +1,9 @@
 // The paid-job rules of THREAT_MODEL.md §D, including the track's "sale in the middle of a payout".
 // Chain and inference are in-memory fakes so every ordering can be forced deterministically.
 import { describe, expect, test } from "bun:test"
-import { resumeAwaiting, submitJob, type Activation, type Answer, type Chain, type Deps, type Job, type Payment } from "../src/jobs"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { resumeAwaiting, submitJob, type Activation, type Answer, type Chain, type Deps, type Job, type JobInput, type Payment } from "../src/jobs"
+import { base58Encode, jobMessage, RECIPIENT, signNep413 } from "../src/nep413"
 
 const NAME = "preflight.deedbot.deedhq.testnet"
 const RUNTIME = "deedhq.testnet"
@@ -11,6 +13,25 @@ const T0 = Date.UTC(2026, 10, 3, 12) // ms
 const ns = (ms: number) => BigInt(ms) * 1_000_000n
 const TX = (n: number) => `${"9".repeat(43 - String(n).length)}${n}`.replace(/0/g, "A")
 const REQ = { receiver_id: "usdt.testnet", actions: [{ type: "FunctionCall", params: { methodName: "ft_transfer", args: { receiver_id: "x.testnet", amount: "1" }, gas: "30000000000000", deposit: "1" } }] }
+
+// Each test account has one ed25519 full-access key.
+const keys = new Map<string, Uint8Array>()
+const keyOf = (account: string) => {
+  if (!keys.has(account)) keys.set(account, ed25519.utils.randomSecretKey())
+  return keys.get(account)!
+}
+const pubOf = (account: string) => "ed25519:" + base58Encode(ed25519.getPublicKey(keyOf(account)))
+function signed(input: Omit<JobInput, "auth">, as = input.sender): JobInput {
+  const nonce = crypto.getRandomValues(new Uint8Array(32))
+  return {
+    ...input,
+    auth: {
+      public_key: pubOf(as),
+      signature: signNep413(jobMessage(input.name, input.payment_tx, input.request), nonce, RECIPIENT, keyOf(as)),
+      nonce: Buffer.from(nonce).toString("base64"),
+    },
+  }
+}
 
 class World implements Chain {
   ownerOf = "kofi.testnet"
@@ -33,6 +54,10 @@ class World implements Chain {
   async lastRotationNs() {
     if (this.down) throw new Error("rpc unavailable")
     return this.rotation
+  }
+  async hasFullAccessKey(account: string, pk: string) {
+    if (this.down) throw new Error("rpc unavailable")
+    return pubOf(account) === pk
   }
   /** Simulates a sale: the registry owner changes and the rotation time moves. */
   sell(to: string, atMs: number) {
@@ -83,7 +108,7 @@ function deps(world: World, opts: { onExplain?: () => void | Promise<void>; fail
   }
   return d
 }
-const submit = (d: Deps, tx: string, sender = "alice.testnet") => submitJob(d, { name: NAME, payment_tx: tx, sender, request: REQ })
+const submit = (d: Deps, tx: string, sender = "alice.testnet") => submitJob(d, signed({ name: NAME, payment_tx: tx, sender, request: REQ }))
 
 describe("accept and serve", () => {
   test("a valid payment under an active owner is answered, with risk flags", async () => {
@@ -203,6 +228,35 @@ describe("D4: one payment, one job", () => {
   })
 })
 
+describe("payer authentication (NEP-413)", () => {
+  test("no signature: refused, nothing recorded", async () => {
+    const w = new World()
+    const d = deps(w)
+    const r = await submitJob(d, { name: NAME, payment_tx: w.pay(20, T0 - 1_000), sender: "alice.testnet", request: REQ })
+    expect(r.http).toBe(401)
+    expect(d.store.list()).toHaveLength(0)
+  })
+  test("someone else submits Alice's public payment with their own question: refused", async () => {
+    const w = new World()
+    const d = deps(w)
+    const tx = w.pay(21, T0 - 1_000)
+    const theirs = { receiver_id: "mallory.testnet", actions: [{ type: "Transfer", params: { deposit: "1" } }] }
+    // Mallory claims to be Alice but signs with her own key.
+    const r = await submitJob(d, signed({ name: NAME, payment_tx: tx, sender: "alice.testnet", request: theirs }, "mallory.testnet"))
+    expect(r.http).toBe(401)
+    // Alice can still use her payment afterwards.
+    expect((await submit(d, tx)).http).toBe(200)
+  })
+  test("a valid signature for one request can't be reused for a different request", async () => {
+    const w = new World()
+    const d = deps(w)
+    const tx = w.pay(22, T0 - 1_000)
+    const good = signed({ name: NAME, payment_tx: tx, sender: "alice.testnet", request: REQ })
+    const swapped = { ...good, request: { receiver_id: "other.testnet", actions: [{ type: "Transfer", params: { deposit: "2" } }] } }
+    expect((await submitJob(d, swapped)).http).toBe(401)
+  })
+})
+
 describe("D5: fail closed", () => {
   test("RPC unavailable: refuse, record nothing, run nothing", async () => {
     const w = new World()
@@ -231,7 +285,7 @@ describe("payment checks", () => {
   })
   test("malformed input is rejected with what to send", async () => {
     const d = deps(new World())
-    const r = await submitJob(d, { name: "x", payment_tx: "nope", sender: "a", request: REQ })
+    const r = await submitJob(d, signed({ name: "x", payment_tx: "nope", sender: "a", request: REQ }))
     expect(r.http).toBe(400)
     expect(r.error).toContain("payment_tx")
   })

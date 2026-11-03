@@ -9,15 +9,15 @@ import { Flags, JobCard } from "@/components/job-card"
 import { Page, Reveal, ease } from "@/components/motion"
 import { useDeeds } from "@/lib/data"
 import { near } from "@/lib/format"
-import { EXAMPLES, riskPreview, runtimeHealth, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
+import { EXAMPLES, jobMessage, RECIPIENT, riskPreview, runtimeHealth, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
 import { useWallet } from "@/lib/wallet"
 import { cn } from "@/lib/utils"
 
-type Step = "idle" | "paying" | "asking" | "done"
+type Step = "idle" | "paying" | "signing" | "asking" | "done"
 
 export function TryPage() {
   const { deeds } = useDeeds()
-  const { account, preview, connect, transfer } = useWallet()
+  const { account, preview, connect, transfer, signMessage } = useWallet()
   const serving = deeds.filter((d) => d.status === "serving")
   const [deedId, setDeedId] = useState<string>("")
   const deed = serving.find((d) => d.id === deedId) ?? serving[0]
@@ -57,8 +57,11 @@ export function TryPage() {
       setStep("paying")
       const price = deed.activation?.price_yocto ?? "0"
       const paymentTx = await transfer(deed.id, price)
+      // Prove this account paid, and bind the payment to this exact question (NEP-413).
+      setStep("signing")
+      const auth = await signMessage(await jobMessage(deed.id, paymentTx, parsed), RECIPIENT)
       setStep("asking")
-      const r = await submitJob({ name: deed.id, payment_tx: paymentTx, sender: account, request: parsed })
+      const r = await submitJob({ name: deed.id, payment_tx: paymentTx, sender: account, request: parsed, auth })
       if (!r.body.job) throw new Error(r.body.error ?? `runtime returned ${r.status}`)
       setJob(r.body.job)
       setStep("done")
@@ -145,11 +148,13 @@ export function TryPage() {
                     </option>
                   ))}
                 </select>
-                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || step === "paying" || step === "asking"} onClick={ask}>
-                  {step === "paying" || step === "asking" ? <Loader2 className="animate-spin" /> : account && !preview ? <ScanSearch /> : <Wallet />}
+                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || step === "paying" || step === "signing" || step === "asking"} onClick={ask}>
+                  {step === "paying" || step === "signing" || step === "asking" ? <Loader2 className="animate-spin" /> : account && !preview ? <ScanSearch /> : <Wallet />}
                   {step === "paying"
-                    ? "Confirm the payment in your wallet…"
-                    : step === "asking"
+                    ? "1/2 Confirm the payment in your wallet…"
+                    : step === "signing"
+                      ? "2/2 Sign the request (no fee) so only you can use this payment…"
+                      : step === "asking"
                       ? "Checking owner, payment, asking the enclave…"
                       : account && !preview
                         ? `Pay ${deed ? near(deed.service.priceNear) : ""} and explain`

@@ -49,7 +49,21 @@ async function call<T>(path: string, init?: RequestInit): Promise<{ status: numb
 export const runtimeHealth = () => call<Health>("/v1/health").then((r) => r.body)
 export const riskPreview = (request: ProposedTx) =>
   call<{ flags: RiskFlag[] }>("/v1/flags", { method: "POST", body: JSON.stringify({ request }) }).then((r) => r.body.flags)
-export const submitJob = (input: { name: string; payment_tx: string; sender: string; request: ProposedTx }) =>
+/** Must match runtime/src/nep413.ts jobMessage exactly: binds the Deed, the payment and the exact request. */
+export const RECIPIENT = "deed-preflight"
+export async function jobMessage(name: string, paymentTx: string, request: ProposedTx): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(request)))
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")
+  return `Preflight job\nDeed: ${name}\nPayment: ${paymentTx}\nRequest sha256: ${hex}`
+}
+
+export const submitJob = (input: {
+  name: string
+  payment_tx: string
+  sender: string
+  request: ProposedTx
+  auth: { public_key: string; signature: string; nonce: string }
+}) =>
   call<{ error?: string; job?: Job }>("/v1/jobs", { method: "POST", body: JSON.stringify(input) })
 export const jobsFor = (name: string) => call<{ jobs: Job[] }>(`/v1/jobs?name=${encodeURIComponent(name)}`).then((r) => r.body.jobs)
 
