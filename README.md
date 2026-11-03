@@ -314,6 +314,8 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 **Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`8c5e8df1…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
 
+**How good are the flags?** [runtime/eval/RESULTS.md](runtime/eval/RESULTS.md): 24 labelled transactions (safe / check / danger), `bun run eval`. The first run found real bugs (1 dangerous miss, 2 false alarms) that are fixed; the current 22/24 is optimistic because it's the same set the fixes were made on. An independent held-out set is still to do.
+
 **Agents and scripts** pay and ask in one command: `bun run ask --as <account.testnet> --runtime <url> --example approve` ([src/ask.ts](runtime/src/ask.ts)) reads the price from the activation, pays the Deed, signs the job with `near message sign-nep413` and prints the answer with its enclave checks.
 
 **Refunds** ([src/refunds.ts](runtime/src/refunds.ts)) come from the runtime operator's account, never the Deed (THREAT_MODEL decision 2). Dry run by default.
