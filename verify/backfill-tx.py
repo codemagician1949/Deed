@@ -60,7 +60,8 @@ for s in r["steps"]:
         continue
     err = (s.get("error") or "")
     if s["expect"] == "fail" and err.startswith("panicked:"):
-        needle = err.replace("panicked: ", "")[:40]
+        # The CLI's error text ends with the closing `")` of its own wrapper; drop it before matching.
+        needle = err.replace("panicked: ", "").rstrip('")\\ ')[:40]
         best = None
         for t in txs:
             h = t["transaction"]["hash"]

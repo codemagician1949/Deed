@@ -98,9 +98,16 @@ tx pre   ok  "The seller's agent spends within its grant"           "$AGENT" "$N
 
 # v3 job escrow: a customer pays for a job; the contract holds it; the runtime settles it into the name.
 REQ_HASH=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(b"{\"receiver_id\":\"friend.testnet\",\"actions\":[]}").hexdigest())')
-JOB_PRICE=$(view "$DEED" get_activation "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["price_yocto"])/1e24)')
+JOB_PRICE=""
+for _ in 1 2 3 4 5; do
+  JOB_PRICE=$(view "$DEED" get_activation "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json
+try: print(int(json.load(sys.stdin)["price_yocto"]))  # exact yoctoNEAR (a float would round below the price)
+except Exception: pass')
+  [ -n "$JOB_PRICE" ] && break; sleep 3
+done
+[ -n "$JOB_PRICE" ] || { echo "ERROR: couldn't read the Deed's price from get_activation (RPC trouble?). Nothing paid; re-run."; exit 1; }
 pay_job() { # desc -> sets JOB to the new job id
-  local out code; out=$(near contract call-function as-transaction "$DEED" pay_job json-args "{\"token_id\":\"$NAME\",\"request_hash\":\"$REQ_HASH\"}" prepaid-gas '30 Tgas' attached-deposit "$JOB_PRICE NEAR" sign-as "$BUYER" $NET $SIGN 2>&1); code=$?
+  local out code; out=$(near contract call-function as-transaction "$DEED" pay_job json-args "{\"token_id\":\"$NAME\",\"request_hash\":\"$REQ_HASH\"}" prepaid-gas '30 Tgas' attached-deposit "$JOB_PRICE yoctoNEAR" sign-as "$BUYER" $NET $SIGN 2>&1); code=$?
   record job ok "$1" "$code" "$out"
   local h; h=$(printf '%s' "$out" | sed $'s/\x1b\\[[0-9;]*m//g' | grep -oE 'Transaction ID: [1-9A-HJ-NP-Za-km-z]+' | head -1 | awk '{print $3}')
   JOB=$(q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tx\",\"params\":{\"tx_hash\":\"$h\",\"sender_account_id\":\"$BUYER\",\"wait_until\":\"FINAL\"}}" \
@@ -110,7 +117,7 @@ pay_job "A customer pays for a job: the Deed contract holds the payment"
 N0=$(balance "$NAME")
 tx J1 ok "The runtime delivers and settles the job" "$ROOT" "$DEED" settle_job "{\"job_id\":\"$JOB\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas"
 sleep 2; N1=$(balance "$NAME")
-[ "$(python3 -c "print(1 if $N1-$N0 >= int($JOB_PRICE*1e24) else 0)")" = 1 ]; record J1 ok "The job's payment landed in the name's own wallet (+$(python3 -c "print(round(($N1-$N0)/1e24,4))") NEAR)" $? ""
+[ "$(python3 -c "print(1 if $N1-$N0 >= $JOB_PRICE else 0)")" = 1 ]; record J1 ok "The job's payment landed in the name's own wallet (+$(python3 -c "print(round(($N1-$N0)/1e24,4))") NEAR)" $? ""
 pay_job "A customer pays for a second job (it will still be pending at the sale)"
 JOB_BEFORE_SALE=$JOB
 tx D8 fail "A stranger tries to settle someone else's job" "$PARTNER" "$DEED" settle_job "{\"job_id\":\"$JOB\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas" "only the runtime this job was paid to"
