@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Daily, so the live testnet check keeps running through judging even without pushes.
+  schedule:
+    - cron: "17 6 * * *"
+  # "Run workflow" button on the Actions tab.
+  workflow_dispatch:
 
 jobs:
   contract:
