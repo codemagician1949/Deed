@@ -56,3 +56,18 @@ describe("risk flags", () => {
     expect(codes({ receiver_id: "", actions: [] } as never)).toEqual(["malformed"])
   })
 })
+
+describe("final verdict (flags set a floor under the model)", () => {
+  const { finalVerdict } = require("../src/verdict") as typeof import("../src/verdict")
+  test("a high flag turns the model's CHECK FIRST into DO NOT SIGN, marked raised", () => {
+    const v = finalVerdict("Adds a key.\n\nVerdict: CHECK FIRST", [{ severity: "high" }])
+    expect(v).toEqual({ model: "CHECK FIRST", floor: "DO NOT SIGN", final: "DO NOT SIGN", raised: true })
+  })
+  test("the model may be stricter than the flags; that stands", () => {
+    expect(finalVerdict("Verdict: DO NOT SIGN", [{ severity: "info" }]).final).toBe("DO NOT SIGN")
+    expect(finalVerdict("Verdict: DO NOT SIGN", [{ severity: "info" }]).raised).toBe(false)
+  })
+  test("no verdict line: at least CHECK FIRST", () => {
+    expect(finalVerdict("no verdict here", []).final).toBe("CHECK FIRST")
+  })
+})

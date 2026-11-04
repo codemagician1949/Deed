@@ -65,10 +65,11 @@ const res = await fetch(`${runtime}/v1/jobs`, {
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ name: deed, payment_tx: paymentTx, sender: as, request, auth: { public_key: publicKey, signature, nonce } }),
 })
-const body = (await res.json()) as { error?: string; job?: { status: string; reason?: string; flags: { severity: string; message: string }[]; answer?: { explanation: string; check?: Record<string, unknown> } } }
+const body = (await res.json()) as { error?: string; job?: { status: string; reason?: string; flags: { severity: string; message: string }[]; answer?: { explanation: string; check?: Record<string, unknown> }; verdict?: { final: string; raised: boolean } } }
 console.log(`HTTP ${res.status} · ${body.job?.status ?? body.error}`)
 for (const f of body.job?.flags ?? []) console.log(`  [${f.severity}] ${f.message}`)
 if (body.job?.answer) {
   console.log(`\n${body.job.answer.explanation}\n`)
   console.log("enclave checks:", body.job.answer.check)
+  if (body.job.verdict?.raised) console.log(`final verdict: ${body.job.verdict.final} (raised by the risk flags)`)
 } else if (body.job?.reason) console.log(body.job.reason)

@@ -1,6 +1,6 @@
 import { motion } from "motion/react"
 import { BadgeCheck, CircleAlert, Clock, ExternalLink, Fingerprint, Undo2 } from "lucide-react"
-import type { Job, RiskFlag } from "@/lib/runtime"
+import { finalVerdict, type Job, type RiskFlag } from "@/lib/runtime"
 import { explorerTx, near, when } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { ease } from "./motion"
@@ -64,7 +64,8 @@ const STATUS: Record<Job["status"], { label: string; icon: typeof Clock; cls: st
 
 export function JobCard({ job }: { job: Job }) {
   const s = STATUS[job.status]
-  const verdict = job.answer?.explanation.match(/Verdict:\s*(.+)$/im)?.[1]
+  const v = finalVerdict(job)
+  const verdict = v?.final
   const body = job.answer?.explanation.replace(/\n?Verdict:.*$/im, "").trim()
   const sig = job.answer?.check
   return (
@@ -91,6 +92,12 @@ export function JobCard({ job }: { job: Job }) {
         >
           {verdict}
         </div>
+      )}
+      {v?.raised && (
+        <p className="-mt-2 text-[11px] text-muted-foreground">
+          The model said {v.model ? <span className="font-mono">{v.model}</span> : "no verdict"}; the risk flags set a stricter floor, so the verdict is raised.
+          The model's signed text above is unchanged.
+        </p>
       )}
       <Flags flags={job.flags} />
       {job.reason && <p className="text-xs text-muted-foreground">{job.reason}</p>}
