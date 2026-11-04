@@ -1,8 +1,9 @@
-// Real chain reads for the job rules: registry owner, Deed activation, the payment tx, and the
-// time of the latest ownership change. Every read is fresh (no cache); any failure throws so the
-// caller fails closed.
+// Real chain access for the job rules: registry owner, the Deed's activation and listing, the escrowed
+// job, and the runtime's two writes (settle_job / refund_job). Every read is fresh (no cache); any read
+// failure throws so the caller fails closed.
 import { CONFIG } from "./config"
-import type { Activation, Chain, Payment } from "./jobs"
+import type { Activation, Chain, EscrowJob } from "./jobs"
+import { makeSigner, type Signer } from "./signer"
 
 let id = 0
 async function rpc<T>(method: string, params: unknown): Promise<T> {
@@ -38,6 +39,13 @@ async function view<T>(contract: string, method: string, args: object): Promise<
   return JSON.parse(Buffer.from(r.result).toString("utf8")) as T
 }
 
+let signer: Signer | null = null
+function getSigner(): Signer {
+  if (!CONFIG.runtimeKey) throw new Error("RUNTIME_KEY is not set: this runtime can't settle or refund jobs on chain")
+  signer ??= makeSigner(CONFIG.rpc, CONFIG.runtimeId, CONFIG.runtimeKey)
+  return signer
+}
+
 export const chain: Chain = {
   async owner(name) {
     const t = await view<{ owner_id: string } | null>(CONFIG.registry, "nft_token", { token_id: name })
@@ -47,77 +55,20 @@ export const chain: Chain = {
     return view<Activation | null>(CONFIG.deed, "get_activation", { token_id: name })
   },
   async listingSeller(name) {
-    const l = await view<{ seller: string; state: unknown } | null>(CONFIG.deed, "get_listing", { token_id: name })
-    return l && l.state === "Active" ? l.seller : null
+    // ListingState is serialized as {"kind": "Active"} (serde tag).
+    const l = await view<{ seller: string; state: { kind?: string } | string } | null>(CONFIG.deed, "get_listing", { token_id: name })
+    const kind = typeof l?.state === "string" ? l.state : l?.state?.kind
+    return l && kind === "Active" ? l.seller : null
   },
-  async payment(txHash, sender): Promise<Payment | null> {
-    let r: any
-    try {
-      r = await rpc("tx", { tx_hash: txHash, sender_account_id: sender, wait_until: "FINAL" })
-    } catch (e) {
-      // Unknown tx is "no payment", not an outage.
-      if (/UNKNOWN_TRANSACTION|INVALID_TRANSACTION|PARSE_ERROR|TIMEOUT_ERROR/.test(String((e as { rpcName?: string }).rpcName ?? e))) return null
-      throw e
-    }
-    const tx = r.transaction
-    const transfers = (tx.actions as unknown[]).filter((a) => typeof a === "object" && a && "Transfer" in (a as object))
-    const deposit = transfers.reduce((s: bigint, a: any) => s + BigInt(a.Transfer.deposit), 0n)
-    const block = await rpc<{ header: { timestamp_nanosec: string } }>("block", { block_id: r.transaction_outcome.block_hash })
-    return {
-      hash: tx.hash,
-      signer: tx.signer_id,
-      receiver: tx.receiver_id,
-      depositYocto: deposit,
-      timestampNs: BigInt(block.header.timestamp_nanosec),
-      success: !!r.status && "SuccessValue" in r.status && transfers.length > 0,
-    }
+  async job(jobId) {
+    return view<EscrowJob | null>(CONFIG.deed, "get_job", { job_id: jobId })
   },
-  async hasFullAccessKey(account, publicKey) {
-    try {
-      const k = await rpc<{ permission: unknown }>("query", {
-        request_type: "view_access_key",
-        finality: "final",
-        account_id: account,
-        public_key: publicKey,
-      })
-      return k.permission === "FullAccess"
-    } catch (e) {
-      if (/UNKNOWN_ACCESS_KEY|UNKNOWN_ACCOUNT/.test(String((e as { rpcName?: string }).rpcName ?? e))) return false
-      throw e
-    }
+  async settle(jobId, answerHash) {
+    const r = await getSigner().call(CONFIG.deed, "settle_job", { job_id: jobId, answer_hash: answerHash }, 100)
+    return { tx: r.hash, state: r.value as EscrowJob["state"] }
   },
-  async lastRotationNs(name) {
-    const list = await fetch(`${CONFIG.txApi}/v0/account`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ account_id: name }),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!list.ok) throw new Error(`history HTTP ${list.status}`)
-    const hashes: string[] = ((await list.json()) as any).account_txs.map((t: any) => t.transaction_hash)
-    let latest = 0n
-    for (let i = 0; i < hashes.length; i += 20) {
-      const r = await fetch(`${CONFIG.txApi}/v0/transactions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tx_hashes: hashes.slice(i, i + 20) }),
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!r.ok) throw new Error(`history HTTP ${r.status}`)
-      for (const t of ((await r.json()) as any).transactions ?? []) {
-        for (const rc of t.receipts ?? []) {
-          for (const l of rc.execution_outcome.outcome.logs as string[]) {
-            if (!l.startsWith("EVENT_JSON:") || !l.includes("nft_transfer")) continue
-            const e = JSON.parse(l.slice(11))
-            const d = Array.isArray(e.data) ? e.data[0] : e.data
-            if (e.standard === "nep171" && e.event === "nft_transfer" && (d?.token_ids ?? []).includes(name)) {
-              const ts = BigInt(rc.execution_outcome.block_timestamp)
-              if (ts > latest) latest = ts
-            }
-          }
-        }
-      }
-    }
-    return latest
+  async refund(jobId) {
+    const r = await getSigner().call(CONFIG.deed, "refund_job", { job_id: jobId }, 30)
+    return { tx: r.hash, state: r.value as EscrowJob["state"] }
   },
 }

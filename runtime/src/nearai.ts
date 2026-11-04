@@ -1,7 +1,7 @@
 // NEAR AI Cloud verifiable inference: one chat completion inside a TEE, then the enclave's
 // signature over sha256(exact request bytes) and sha256(exact response bytes), checked locally.
 import { CONFIG, SERVICE } from "./config"
-import type { Answer, Inference } from "./jobs"
+import type { JobContext, Answer, Inference } from "./jobs"
 import type { ProposedTx, RiskFlag } from "./risk"
 import { checkSignature } from "./tee"
 
@@ -29,13 +29,15 @@ async function attestedAddresses(model: string): Promise<Set<string>> {
 }
 
 export const nearAi: Inference = {
-  async explain(tx: ProposedTx, flags: RiskFlag[]): Promise<Answer> {
+  async explain(tx: ProposedTx, flags: RiskFlag[], job?: JobContext): Promise<Answer> {
     if (!CONFIG.nearAiKey) throw new Error("NEARAI_API_KEY is not set on this runtime")
     const requestBody = JSON.stringify({
       model: SERVICE.model,
       messages: [
         { role: "system", content: SERVICE.system_prompt },
-        { role: "user", content: JSON.stringify({ transaction: tx, risk_flags: flags }) },
+        // The job context is part of the signed request bytes, so an enclave-signed answer is bound to this
+        // Deed, this on-chain job, this runtime and this config, and can't be passed off as another job's.
+        { role: "user", content: JSON.stringify({ ...(job ? { job } : {}), transaction: tx, risk_flags: flags }) },
       ],
       max_tokens: SERVICE.max_tokens,
       temperature: SERVICE.temperature,

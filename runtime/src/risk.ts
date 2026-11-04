@@ -32,7 +32,46 @@ const isMax = (v: unknown) => {
   return s.length >= 30 || s === "340282366920938463463374607431768211455" // u128::MAX
 }
 
+/** Well-known token contracts and their decimals (mainnet and testnet), used to size token amounts. */
+export const KNOWN_TOKENS: Record<string, { symbol: string; decimals: number }> = {
+  "wrap.near": { symbol: "wNEAR", decimals: 24 },
+  "wrap.testnet": { symbol: "wNEAR", decimals: 24 },
+  "usdt.tether-token.near": { symbol: "USDT", decimals: 6 },
+  "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": { symbol: "USDC", decimals: 6 },
+  "usdc.fakes.testnet": { symbol: "USDC", decimals: 6 },
+  "usdt.fakes.testnet": { symbol: "USDT", decimals: 6 },
+}
+/** Well-known contracts tokens are normally approved for or sent into (DEXs, intents, lending). */
+export const KNOWN_CONTRACTS = new Set([
+  "v2.ref-finance.near",
+  "ref-finance-101.testnet",
+  "intents.near",
+  "dex.testnet",
+  "contract.main.burrow.near",
+  "aurora",
+  ...Object.keys(KNOWN_TOKENS),
+])
+
+/** FunctionCall args may arrive as an object, a JSON string, or base64 of JSON (as wallets send them). */
+function decodeArgs(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>
+  if (typeof raw !== "string" || !raw) return {}
+  for (const text of [raw, (() => { try { return Buffer.from(raw, "base64").toString("utf8") } catch { return "" } })()]) {
+    try {
+      const v = JSON.parse(text)
+      if (v && typeof v === "object") return v as Record<string, unknown>
+    } catch {
+      /* not this encoding */
+    }
+  }
+  return {}
+}
+
 export function riskFlags(tx: ProposedTx): RiskFlag[] {
+  return flagsOf(tx, 0)
+}
+
+function flagsOf(tx: ProposedTx, depth: number): RiskFlag[] {
   const flags: RiskFlag[] = []
   const add = (code: string, severity: Severity, message: string) => flags.push({ code, severity, message })
   if (!tx || typeof tx.receiver_id !== "string" || !Array.isArray(tx.actions) || tx.actions.length === 0) {
@@ -71,9 +110,22 @@ export function riskFlags(tx: ProposedTx): RiskFlag[] {
       case "Transfer":
         total += big(p.deposit)
         break
+      case "Delegate":
+      case "SignedDelegate":
+      case "DelegateAction": {
+        // A meta-transaction: someone else submits actions signed by you. Read what's inside.
+        const da = ((p.delegateAction ?? p.delegate_action ?? p) as Record<string, unknown>) ?? {}
+        const inner: ProposedTx = {
+          receiver_id: String(da.receiverId ?? da.receiver_id ?? ""),
+          actions: (Array.isArray(da.actions) ? da.actions : []) as ProposedAction[],
+        }
+        add("delegate_action", "medium", `Signs actions for ${inner.receiver_id || "another account"} that someone else will submit for you (a meta-transaction).`)
+        if (depth < 2) for (const f of flagsOf(inner, depth + 1)) if (f.code !== "malformed") flags.push({ ...f, message: `Inside the delegated actions: ${f.message}` })
+        break
+      }
       case "FunctionCall": {
         const method = String(p.methodName ?? p.method_name ?? "")
-        const args = (p.args ?? {}) as Record<string, unknown>
+        const args = decodeArgs(p.args)
         total += big(p.deposit)
         const to = String(args.receiver_id ?? args.spender_id ?? args.account_id ?? tx.receiver_id)
         if (/approve|allowance/i.test(method) && Object.values(args).some(isMax)) {
@@ -85,6 +137,17 @@ export function riskFlags(tx: ProposedTx): RiskFlag[] {
         if (method === "nft_revoke_all") add("nft_revoke", "info", "Removes every approval on this NFT.")
         if (/^(ft_transfer|nft_transfer|mt_transfer|mt_batch_transfer)$/.test(method)) {
           add("moves_assets", "info", `Moves tokens or NFTs out via ${method} to ${to}.`)
+        }
+        // Size token amounts for tokens whose decimals we know.
+        const token = KNOWN_TOKENS[tx.receiver_id]
+        if (token && /^ft_(transfer|transfer_call|approve)$/.test(method) && /^\d+$/.test(String(args.amount ?? "")) && !isMax(args.amount)) {
+          const units = Number(big(args.amount) / 10n ** BigInt(Math.max(0, token.decimals - 2))) / 100
+          if (units >= 100_000) add("large_token_amount", "high", `Moves ${units.toLocaleString("en-US")} ${token.symbol}.`)
+          else if (units >= 10_000) add("large_token_amount", "medium", `Moves ${units.toLocaleString("en-US")} ${token.symbol}. Make sure that's intended.`)
+        }
+        // Approving for, or sending tokens into, a contract we don't recognise.
+        if ((/approve|allowance/i.test(method) || /_transfer_call$/.test(method)) && !KNOWN_CONTRACTS.has(to)) {
+          add("unknown_contract", "info", `${to} is not a contract Preflight recognises. Check it's the app you meant.`)
         }
         if (/_transfer_call$/.test(method)) {
           add("transfer_call", "medium", `Sends tokens or an NFT into ${to}, whose code then decides what happens to them (normal for swaps and marketplaces).`)

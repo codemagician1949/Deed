@@ -71,3 +71,28 @@ describe("final verdict (flags set a floor under the model)", () => {
     expect(finalVerdict("no verdict here", []).final).toBe("CHECK FIRST")
   })
 })
+
+describe("risk flags: v3 additions", () => {
+  const { riskFlags } = require("../src/risk") as typeof import("../src/risk")
+  const codes = (tx: object) => riskFlags(tx as never).map((f) => `${f.severity}:${f.code}`)
+  test("an unlimited approval hidden in base64 args is still caught", () => {
+    const args = Buffer.from(JSON.stringify({ spender_id: "drain.testnet", amount: "340282366920938463463374607431768211455" })).toString("base64")
+    expect(codes({ receiver_id: "usdc.fakes.testnet", actions: [{ type: "FunctionCall", params: { methodName: "ft_approve", args, deposit: "1" } }] })).toContain("high:unlimited_approval")
+  })
+  test("delegated (meta-transaction) actions are flagged and read inside", () => {
+    const c = codes({ receiver_id: "relayer.testnet", actions: [{ type: "Delegate", params: { delegateAction: { receiverId: "me.testnet", actions: [{ type: "AddKey", params: { accessKey: { permission: "FullAccess" } } }] } } }] })
+    expect(c).toContain("medium:delegate_action")
+    expect(c).toContain("high:full_access_key")
+  })
+  test("large transfers of known tokens are sized in real units", () => {
+    const usdc = (amount: string) => codes({ receiver_id: "usdc.fakes.testnet", actions: [{ type: "FunctionCall", params: { methodName: "ft_transfer", args: { receiver_id: "x.testnet", amount }, deposit: "1" } }] })
+    expect(usdc("5000000")).not.toContain("medium:large_token_amount") // 5 USDC
+    expect(usdc("20000000000")).toContain("medium:large_token_amount") // 20,000 USDC
+    expect(usdc("500000000000")).toContain("high:large_token_amount") // 500,000 USDC
+  })
+  test("approving an unrecognised contract is noted; a known DEX is not", () => {
+    const approve = (spender: string) => codes({ receiver_id: "usdc.fakes.testnet", actions: [{ type: "FunctionCall", params: { methodName: "ft_approve", args: { spender_id: spender, amount: "100" }, deposit: "1" } }] })
+    expect(approve("free-airdrop.testnet")).toContain("info:unknown_contract")
+    expect(approve("dex.testnet")).not.toContain("info:unknown_contract")
+  })
+})

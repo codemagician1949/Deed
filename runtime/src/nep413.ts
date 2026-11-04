@@ -1,17 +1,14 @@
-// NEP-413 signed messages: how a payer proves they control the account that paid, and binds the
-// payment to the exact question asked. Without this, anyone who saw a public payment tx could
-// submit it first with their own question and consume someone else's payment.
+// NEP-413 signed messages: how a Deed's holder proves, to this server, that they control the account
+// the registry lists as owner (the holder-only console, owner.ts). Since v3 a customer needs no
+// signature: the payer is whoever called pay_job, and the request hash is bound on chain.
 //
 // hash = sha256( u32_le(2^31 + 413) || borsh({ message: string, nonce: [u8; 32], recipient: string, callback_url: Option<string> }) )
 // signature = ed25519(hash) by one of the signer's full-access keys.
 import { ed25519 } from "@noble/curves/ed25519.js"
 import { sha256 } from "@noble/hashes/sha2.js"
 import { utf8ToBytes } from "@noble/hashes/utils.js"
-import { sha256Hex } from "./tee"
 
 export const NEP413_TAG = 2 ** 31 + 413
-/** The recipient every Preflight job message names (shown by wallets). */
-export const RECIPIENT = "deed-preflight"
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 export function base58Decode(s: string): Uint8Array {
@@ -66,11 +63,6 @@ export function nep413Hash(message: string, nonce: Uint8Array, recipient: string
     ...(callbackUrl ? [1, ...borshString(callbackUrl)] : [0]),
   ])
   return sha256(new Uint8Array([...u32(NEP413_TAG), ...payload]))
-}
-
-/** The message a payer signs for a job: human-readable, binds name + payment + exact request. */
-export function jobMessage(name: string, paymentTx: string, request: unknown): string {
-  return `Preflight job\nDeed: ${name}\nPayment: ${paymentTx}\nRequest sha256: ${sha256Hex(JSON.stringify(request))}`
 }
 
 const decodeSig = (sig: string): Uint8Array => {

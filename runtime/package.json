@@ -6,7 +6,6 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "test": "bun test",
-    "refunds": "bun run src/refunds.ts",
     "typecheck": "tsc --noEmit",
     "ask": "bun run src/ask.ts",
     "eval": "bun run eval/run.ts"

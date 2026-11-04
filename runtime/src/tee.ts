@@ -38,7 +38,11 @@ export interface SignatureCheck {
   recovered: string | null
   /** Recovered address equals the address NEAR AI reports for the enclave. */
   signerMatches: boolean
-  /** The signer appears in the model's attestation report (Intel TDX + NVIDIA evidence); null = not checked. */
+  /**
+   * The signer is listed in the attestation report NEAR AI serves for the model. The report carries Intel TDX
+   * and NVIDIA evidence, but this runtime does NOT verify those quotes itself: it trusts NEAR AI's report.
+   * null = not checked.
+   */
   attested?: boolean | null
 }
 

@@ -28,6 +28,8 @@ export const CONFIG = {
   runtimeId: process.env.RUNTIME_ID ?? (deploy.root as string),
   nearAiBase: process.env.NEARAI_BASE ?? "https://cloud-api.near.ai/v1",
   nearAiKey: process.env.NEARAI_API_KEY ?? "",
+  /** Function-call key of runtimeId, limited to settle_job/refund_job on the Deed contract (deploy/runtime-key.sh). */
+  runtimeKey: process.env.RUNTIME_KEY ?? "",
   port: Number(process.env.PORT ?? 8787),
   dataFile: process.env.JOBS_FILE ?? join(here, "..", "data", "jobs.json"),
   /** On first boot with an empty volume, start from this published ledger snapshot (keeps replay protection). */
@@ -47,3 +49,4 @@ export const SERVICE = JSON.parse(configBytes.toString("utf8")) as {
   reasoning_effort?: string
 }
 export const CONFIG_HASH = createHash("sha256").update(configBytes).digest("hex")
+export const CONFIG_BYTES = configBytes

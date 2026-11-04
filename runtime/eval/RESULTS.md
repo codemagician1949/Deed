@@ -8,7 +8,7 @@ Deterministic flags only ([src/risk.ts](../src/risk.ts)), on 24 labelled transac
 - Dangerous misses (danger rated safe): **0**
 - Under-rated (any case rated lower than its label): **2** (d5, a7)
 - False alarms (safe rated check/danger): **0**
-- Latency: 0.46 ms max per transaction (in-process); inference cost for flags: none
+- Latency: 7.21 ms max per transaction (in-process); inference cost for flags: none
 
 | label \ rated | safe | check | danger |
 |---|---|---|---|
@@ -27,16 +27,16 @@ Deterministic flags only ([src/risk.ts](../src/risk.ts)), on 24 labelled transac
 | b7 | safe | safe | — | claiming staking rewards |
 | b8 | safe | safe | info:value | NFT mint paying 0.1 NEAR |
 | d1 | danger | danger | high:full_access_key | adds a full-access key: classic drainer |
-| d2 | danger | danger | high:unlimited_approval | unlimited ft_approve to an unknown spender |
+| d2 | danger | danger | high:unlimited_approval, info:unknown_contract | unlimited ft_approve to an unknown spender |
 | d3 | danger | danger | high:delete_account | deletes the account, sending everything to a stranger |
 | d4 | danger | danger | high:deploy_contract | deploys new code to the user's own account |
 | d5 | danger | **check** | medium:large_value | sends 50 NEAR to a 'verification' contract |
 | d6 | danger | danger | high:full_access_key, medium:delete_key | AddKey + DeleteKey of the user's own key: account takeover |
-| d7 | danger | danger | info:moves_assets, high:extreme_amount, medium:lookalike_name | transfers the user's whole FT balance to a lookalike name |
-| d8 | danger | danger | high:nft_approval | nft_approve to an unknown marketplace for all-time control |
+| d7 | danger | danger | info:moves_assets, high:large_token_amount, high:extreme_amount, medium:lookalike_name | transfers the user's whole FT balance to a lookalike name |
+| d8 | danger | danger | high:nft_approval, info:unknown_contract | nft_approve to an unknown marketplace for all-time control |
 | a1 | check | check | medium:transfer_call | ft_transfer_call into a DEX: normal for swaps, but moves tokens into a contract |
 | a2 | check | check | medium:approval | bounded approval of 100 tokens to a known DEX |
-| a3 | check | check | medium:transfer_call | listing an NFT on a marketplace via nft_transfer_call |
+| a3 | check | check | info:unknown_contract, medium:transfer_call | listing an NFT on a marketplace via nft_transfer_call |
 | a4 | check | check | medium:large_value | 15 NEAR transfer: fine if intended, large for most users |
 | a5 | check | check | medium:opaque_call | multisig / wallet execute: inner actions are opaque |
 | a6 | check | check | medium:large_value | staking 30 NEAR with a validator |
