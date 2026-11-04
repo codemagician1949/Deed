@@ -141,8 +141,10 @@ if [ "$(code_hash "$REGISTRY")" != "DVMYAu7exGKWQdngmtvUDC4rvBfZzSK1kt1AkzaewsPY
   call "$COUNCIL" "$REGISTRY" register_tla "{\"tla_id\":\"$TLA\",\"tla_type\":\"Open\",\"premium_category\":\"Standard\",\"licensee\":null}" '1 yoctoNEAR'
   call "$COUNCIL" "$REGISTRY" activate_open_tla "{\"tla_id\":\"$TLA\"}" '1 yoctoNEAR'
   # The registrar refuses wallets funded below its min_balance (0.1 NEAR); raise the creation deposit to 0.2 NEAR.
+  # Testnet has no live NEAR/USD feed for the replica (on mainnet an oracle refreshes it within 6 h), so the
+  # rate may be up to 30 days old here; otherwise rents fail with rate_stale. The council is the price oracle.
   FEE=$(near contract call-function as-read-only "$REGISTRY" get_fee_config json-args '{}' $NET now 2>/dev/null | sed -n '/^{/,/^}/p' \
-        | jq -c '.account_creation_deposit_yocto = "200000000000000000000000"')
+        | jq -c '.account_creation_deposit_yocto = "200000000000000000000000" | .max_rate_age_ns = "2592000000000000"')
   call "$COUNCIL" "$REGISTRY" update_fee_config "{\"config\":$FEE}" '1 yoctoNEAR'
 fi
 echo "  $(code_hash "$REGISTRY")"
