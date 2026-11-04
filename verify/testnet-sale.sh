@@ -3,7 +3,9 @@
 # with one entry per step: what was tried, what we expected, what happened, the tx hash and
 # the on-chain error. Every attack row must FAIL on-chain for the run to pass.
 #
-# Prereqs: deploy/testnet.sh and deploy/seed-testnet.sh have run (kofi owns and activated the name).
+# Prereqs: deploy/testnet.sh and deploy/seed-testnet.sh have run (kofi owns and activated the name),
+# and the deed contract is v3 (job escrow). The runtime account ($ROOT) settles/refunds jobs here with
+# its own key from the legacy keychain, exactly as the hosted runtime does with its function-call key.
 # Usage:   ROOT=deedhq.testnet verify/testnet-sale.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -49,10 +51,10 @@ except Exception: pass' 2>/dev/null)
   [ "$verdict" = FAIL ] && FAILS=$((FAILS+1))
   printf '%s %-5s %-4s %s\n' "$verdict" "$row" "$got" "$desc"
   [ -n "$err" ] && [ "$got" = fail ] && printf '            on-chain: %s\n' "$err"
-  python3 - "$row" "$expect" "$got" "$verdict" "$desc" "$tx" "$err" >> "$LINES" <<'PY'
+  python3 - "$row" "$expect" "$got" "$verdict" "$desc" "$tx" "$err" "$want" >> "$LINES" <<'PY'
 import json,sys
-row,expect,got,verdict,desc,tx,err=sys.argv[1:]
-print(json.dumps({"row":row,"expect":expect,"got":got,"verdict":verdict,"what":desc,"tx":tx or None,"error":err or None}))
+row,expect,got,verdict,desc,tx,err,want=sys.argv[1:]
+print(json.dumps({"row":row,"expect":expect,"got":got,"verdict":verdict,"what":desc,"tx":tx or None,"error":err or None,"expect_error":want or None}))
 PY
 }
 tx() { # row expect desc signer contract method json deposit gas [want-regex]
@@ -61,11 +63,12 @@ tx() { # row expect desc signer contract method json deposit gas [want-regex]
   record "$1" "$2" "$3" "$code" "$out" "${10:-}"
 }
 finish() {
-python3 - "$LINES" "$REPORT" "$NAME" "$FAILS" <<'PY'
+python3 - "$LINES" "$REPORT" "$NAME" "$FAILS" "$SELLER" "$BUYER" "$AGENT" <<'PY'
 import json,sys,datetime
-lines,report,name,fails=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4])
+lines,report,name,fails,seller,buyer,agent=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]),sys.argv[5],sys.argv[6],sys.argv[7]
 steps=[json.loads(l) for l in open(lines)]
-json.dump({"network":"testnet","name":name,"ran_at":datetime.datetime.utcnow().isoformat()+"Z",
+json.dump({"network":"testnet","contract":"deed v3","name":name,"seller":seller,"buyer":buyer,"agent":agent,
+           "ran_at":datetime.datetime.utcnow().isoformat()+"Z",
            "passed":fails==0,"failures":fails,"steps":steps},open(report,"w"),indent=2)
 PY
 # near-cli-rs prints no tx id for failed transactions; look the rejected attacks up on chain.
@@ -88,9 +91,29 @@ tx setup ok  "The seller adds a second co-owner (a hidden back door)" "$SELLER" 
 tx setup ok  "The seller grants their agent a capped spend (0.1 NEAR, to the seller only)" "$SELLER" "$NAME" hos_grant_spend \
   "{\"extension\":\"$AGENT\",\"receivers\":[\"$SELLER\"],\"budget_yocto\":\"$TENTH\",\"tokens\":[],\"items\":[],\"expires_at\":\"$(far_future)\"}" "1 yoctoNEAR" "60 Tgas"
 
+SELLER_V=$(view "$DEED" get_activation "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["version"])')
 echo "== Before the sale: everything works for the seller"
 OUT=$(near tokens "$BUYER" send-near "$NAME" "$EARN" $NET $SIGN 2>&1); record earn ok "A customer pays $EARN into the name" $? "$OUT"
 tx pre   ok  "The seller's agent spends within its grant"           "$AGENT" "$NAME" w_execute_extension "$(send_req "$SELLER" "$HUNDREDTH")" "1 yoctoNEAR" "80 Tgas"
+
+# v3 job escrow: a customer pays for a job; the contract holds it; the runtime settles it into the name.
+REQ_HASH=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(b"{\"receiver_id\":\"friend.testnet\",\"actions\":[]}").hexdigest())')
+JOB_PRICE=$(view "$DEED" get_activation "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["price_yocto"])/1e24)')
+pay_job() { # desc -> sets JOB to the new job id
+  local out code; out=$(near contract call-function as-transaction "$DEED" pay_job json-args "{\"token_id\":\"$NAME\",\"request_hash\":\"$REQ_HASH\"}" prepaid-gas '30 Tgas' attached-deposit "$JOB_PRICE NEAR" sign-as "$BUYER" $NET $SIGN 2>&1); code=$?
+  record job ok "$1" "$code" "$out"
+  local h; h=$(printf '%s' "$out" | sed $'s/\x1b\\[[0-9;]*m//g' | grep -oE 'Transaction ID: [1-9A-HJ-NP-Za-km-z]+' | head -1 | awk '{print $3}')
+  JOB=$(q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tx\",\"params\":{\"tx_hash\":\"$h\",\"sender_account_id\":\"$BUYER\",\"wait_until\":\"FINAL\"}}" \
+    | python3 -c 'import sys,json,base64;print(json.loads(base64.b64decode(json.load(sys.stdin)["result"]["status"]["SuccessValue"])))')
+}
+pay_job "A customer pays for a job: the Deed contract holds the payment"
+N0=$(balance "$NAME")
+tx J1 ok "The runtime delivers and settles the job" "$ROOT" "$DEED" settle_job "{\"job_id\":\"$JOB\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas"
+sleep 2; N1=$(balance "$NAME")
+[ "$(python3 -c "print(1 if $N1-$N0 >= int($JOB_PRICE*1e24) else 0)")" = 1 ]; record J1 ok "The job's payment landed in the name's own wallet (+$(python3 -c "print(round(($N1-$N0)/1e24,4))") NEAR)" $? ""
+pay_job "A customer pays for a second job (it will still be pending at the sale)"
+JOB_BEFORE_SALE=$JOB
+tx D8 fail "A stranger tries to settle someone else's job" "$PARTNER" "$DEED" settle_job "{\"job_id\":\"$JOB\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas" "only the runtime this job was paid to"
 AUTH_K="{\"path\":[],\"authorization\":$(python3 -c "import json;print(json.dumps(json.dumps({'payload':'sign in to deed','owner':'$SELLER','authorization':'x'})))")}"
 AUTH_M="{\"path\":[],\"authorization\":$(python3 -c "import json;print(json.dumps(json.dumps({'payload':'sign in to deed','owner':'$BUYER','authorization':'x'})))")}"
 AUTH_A="{\"path\":[],\"authorization\":$(python3 -c "import json;print(json.dumps(json.dumps({'payload':'sign in to deed','owner':'$AGENT','authorization':'x'})))")}"
@@ -109,7 +132,12 @@ PAYOUT=$(view "$NAME" hos_payout_account '{}' | tr -d '"')
 # B3: a customer pays while the name is listed (owned by the escrow). buy() re-points payout to the
 # seller before the sale rotation, so that money must reach the seller at the sale, not the escrow.
 OUT=$(near tokens "$ROOT" send-near "$NAME" "$EARN" $NET $SIGN 2>&1); record earn ok "A customer pays $EARN into the name while it is listed" $? "$OUT"
-sleep 2; KB=$(balance "$SELLER")
+# v3: the seller's service keeps answering while listed.
+pay_job "While listed, a customer pays for a job (the seller's activation is still current)"
+tx J3 ok "The runtime settles it while the Deed is listed" "$ROOT" "$DEED" settle_job "{\"job_id\":\"$JOB\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas"
+J3STATE=$(view "$DEED" get_job "{\"job_id\":\"$JOB\"}" | python3 -c 'import sys,json;print("Settled" if "Settled" in json.dumps(json.load(sys.stdin)["state"]) else "other")')
+[ "$J3STATE" = Settled ]; record J3 ok "A job paid while listed is paid into the name (it reaches the seller at the sale, B3)" $? ""
+sleep 3; KB=$(balance "$SELLER")
 
 echo "== The buyer buys"
 NONCE=$(view "$DEED" get_listing "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["nonce"])')
@@ -118,8 +146,12 @@ tx buy ok "The buyer pays exactly the price; the escrow hands them the name" "$B
 sleep 3
 NEWOWNER=$(view "$REGISTRY" nft_token "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["owner_id"])')
 [ "$NEWOWNER" = "$BUYER" ]; record G5 ok "Registry says the buyer ($BUYER) owns the name" $? ""
-KA=$(balance "$SELLER"); LISTED_IN=$(python3 -c "print(round(($KA-$KB)/1e24,4))")
-[ "$(python3 -c "print(1 if $KA-$KB >= 9*10**22 else 0)")" = 1 ]; record B3 ok "Money paid in while listed reached the seller at the sale (+$LISTED_IN NEAR)" $? ""
+KA=$(balance "$SELLER"); GAIN=$(python3 -c "print(round(($KA-$KB)/1e24,4))")
+PROCEEDS=$(python3 -c "print($PRICE_YOCTO - $PRICE_YOCTO//10000*250)")
+[ "$(python3 -c "print(1 if $KA-$KB >= $PROCEEDS else 0)")" = 1 ]; record G5 ok "The seller was paid the price minus 2.5% royalty in the sale transaction (seller +$GAIN NEAR in total)" $? ""
+[ "$(python3 -c "print(1 if $KA-$KB - $PROCEEDS >= 9*10**22 else 0)")" = 1 ]; record B3 ok "Money paid in while listed also reached the seller at the sale (+$(python3 -c "print(round(($KA-$KB-$PROCEEDS)/1e24,4))") NEAR)" $? ""
+SALE_STATE=$(view "$DEED" get_latest_sale "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["state"])')
+[ "$SALE_STATE" = Paid ]; record G5 ok "The sale record is Paid (no waiting window)" $? ""
 [ "$NEWOWNER" = "$BUYER" ] || { echo "ERROR: the sale did not complete (owner is $NEWOWNER); stopping before the attack rows, which would be meaningless."; finish; }
 
 echo "== The seller's side attacks (each must fail on-chain)"
@@ -135,23 +167,19 @@ KEYS=$(q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"reque
 [ "$KEYS" = 0 ]; record A7 ok "The name has $KEYS access keys: nobody can sign as it" $? ""
 tx D2 fail "The seller tries to switch the service back on"          "$SELLER" "$DEED" activate \
   "{\"token_id\":\"$NAME\",\"runtime_id\":\"$ROOT\",\"config_hash\":\"$CONFIG_HASH\",\"price_yocto\":\"1\",\"version\":99}" "0 NEAR" "100 Tgas" "only the current owner"
+# The seller's service tries to collect the job paid before the sale: the contract refunds the customer instead.
+B0=$(balance "$BUYER")
+tx J2 ok "The seller's runtime tries to settle a job paid before the sale" "$ROOT" "$DEED" settle_job "{\"job_id\":\"$JOB_BEFORE_SALE\",\"answer_hash\":\"$REQ_HASH\"}" "0 NEAR" "100 Tgas"
+J2STATE=$(view "$DEED" get_job "{\"job_id\":\"$JOB_BEFORE_SALE\"}" | python3 -c 'import sys,json;print("Refunded" if "Refunded" in json.dumps(json.load(sys.stdin)["state"]) else "other")')
+[ "$J2STATE" = Refunded ]; record J2 ok "…and the contract refunded the customer instead of paying the sold name" $? ""
+tx D2 fail "The buyer tries to reuse an old activation version" "$BUYER" "$DEED" activate \
+  "{\"token_id\":\"$NAME\",\"runtime_id\":\"$ROOT\",\"config_hash\":\"$CONFIG_HASH\",\"price_yocto\":\"1\",\"version\":1}" "0 NEAR" "100 Tgas" "version must be greater"
 STATUS=$(view "$NAME" hos_agent_status "{\"extension\":\"$AGENT\"}")
 echo "$STATUS" | python3 -c 'import sys,json;s=json.load(sys.stdin);sys.exit(0 if (not s["extension_enabled"] and s["grant"] is None) else 1)'; record G1 ok "hos_agent_status: agent disabled, grant gone" $? ""
 
-echo "== The buyer switches it on"
+echo "== The buyer switches it on, naming the runtime's URL on chain"
+VER=${VER:-$((SELLER_V + 1))}  # the next version above the high-water mark
 tx D2 ok "The buyer activates the service under their name" "$BUYER" "$DEED" activate \
-  "{\"token_id\":\"$NAME\",\"runtime_id\":\"$ROOT\",\"config_hash\":\"$CONFIG_HASH\",\"price_yocto\":\"50000000000000000000000\",\"version\":2}" "0 NEAR" "100 Tgas"
-
-echo "== Safety window: The seller's money stays locked until House of Stake can no longer reverse the sale"
-SALE=$(view "$DEED" get_latest_sale "{\"token_id\":\"$NAME\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-tx C5 fail "The seller tries to take the money inside the 5-minute window" "$SELLER" "$DEED" claim_proceeds "{\"sale_id\":\"$SALE\"}" "0 NEAR" "100 Tgas" "revert window still open"
-echo "   waiting 5 minutes for the revert window to close…"
-sleep 305
-K2=$(balance "$SELLER")
-tx C5 ok "After the window, anyone triggers payment" "$BUYER" "$DEED" claim_proceeds "{\"sale_id\":\"$SALE\"}" "0 NEAR" "100 Tgas"
-sleep 3
-K3=$(balance "$SELLER")
-GOT=$(python3 -c "print(round(($K3-$K2)/1e24,4))")
-[ "$(python3 -c "print(1 if $K3-$K2 == $PRICE_YOCTO - $PRICE_YOCTO//10000*250 else 0)")" = 1 ]; record G5 ok "The seller received exactly price minus 2.5% royalty ($GOT NEAR)" $? ""
+  "{\"token_id\":\"$NAME\",\"runtime_id\":\"$ROOT\",\"config_hash\":\"$CONFIG_HASH\",\"price_yocto\":\"50000000000000000000000\",\"version\":$VER,\"runtime_url\":\"${RUNTIME_URL:-https://preflight-production-8802.up.railway.app}\"}" "0 NEAR" "100 Tgas"
 
 finish

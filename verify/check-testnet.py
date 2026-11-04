@@ -7,10 +7,13 @@ Checks:
   1. Each House of Stake replica contract on testnet has the same code hash as the live mainnet contract
      (both read now, not from our files), and as the vendored deploy/mainnet-wasm/*.wasm.
   2. The deed contract is deployed and answers views; the demo Deed's owner and activation are readable.
-  3. Every transaction in verify/report-testnet.json exists on chain, and its outcome (accepted or
-     rejected) matches what the report says.
-  4. Optionally, the hosted Preflight runtime is up and serves the same config fingerprint the Deed's
-     on-chain activation names.
+  3. Every transaction in verify/report-testnet.json exists on chain, its outcome (accepted or rejected)
+     matches the report, and every rejected one failed with the exact error the report expects.
+     Then a few facts are re-read live: the old owner still can't sign in as the name (NEP-641), the old
+     agent is still disabled, and the listing's sweep event paid the seller (G3).
+  4. Optionally, the hosted Preflight runtime is up; the sha256 of the raw config bytes it serves equals
+     the fingerprint it reports, the Deed's on-chain activation, and runtime/preflight.config.json here.
+     The deployed Deed contract's code hash equals the one recorded at deploy (deploy/testnet.json).
 Exit code = number of failed checks.
 """
 import base64, hashlib, json, os, sys, urllib.request
@@ -100,13 +103,18 @@ except Exception as e:
 print("\n== 3. Published live-run report matches the chain")
 rep = json.load(open(os.path.join(ROOT, "verify", "report-testnet.json")))
 hashes = [s["tx"] for s in rep["steps"] if s.get("tx")]
-found = {}
+import re
+found, failure_text, logs = {}, {}, {}
 for i in range(0, len(hashes), 20):
     for t in post(TXAPI + "/v0/transactions", {"tx_hashes": hashes[i:i + 20]}).get("transactions", []):
         recv = t["transaction"]["receiver_id"]
-        failed = any("Failure" in json.dumps(rc["execution_outcome"]["outcome"]["status"])
-                     for rc in t["receipts"] if rc["receipt"]["receiver_id"] == recv)
-        found[t["transaction"]["hash"]] = failed
+        h = t["transaction"]["hash"]
+        bad = [json.dumps(rc["execution_outcome"]["outcome"]["status"]) for rc in t["receipts"]
+               if "Failure" in json.dumps(rc["execution_outcome"]["outcome"]["status"])]
+        found[h] = any("Failure" in json.dumps(rc["execution_outcome"]["outcome"]["status"])
+                       for rc in t["receipts"] if rc["receipt"]["receiver_id"] == recv)
+        failure_text[h] = " ".join(bad).replace('\\"', '"')
+        logs[h] = [l for rc in t["receipts"] for l in rc["execution_outcome"]["outcome"]["logs"]]
 for s in rep["steps"]:
     if not s.get("tx"):
         continue
@@ -114,17 +122,60 @@ for s in rep["steps"]:
         check(False, f"{s['row']}: tx {s['tx'][:10]}… not found on chain")
         continue
     want_fail = s["expect"] == "fail"
-    check(found[s["tx"]] == want_fail, f"{s['row']:<5} {s['tx'][:10]}… {'rejected' if found[s['tx']] else 'accepted'} on chain: {s['what'][:60]}")
+    ok = found[s["tx"]] == want_fail
+    why = ""
+    if ok and want_fail and s.get("expect_error"):
+        ok = re.search(s["expect_error"], failure_text[s["tx"]], re.I) is not None
+        why = f" with /{s['expect_error']}/" if ok else f" but NOT with /{s['expect_error']}/"
+    check(ok, f"{s['row']:<5} {s['tx'][:10]}… {'rejected' if found[s['tx']] else 'accepted'} on chain{why}: {s['what'][:60]}")
+
+# Re-read a few facts live (they hold until the name changes hands again).
+seller, agent = rep.get("seller"), rep.get("agent")
+if seller and agent:
+    try:
+        cur = view(TESTNET, DEP["registry"], "nft_token", {"token_id": rep["name"]})["owner_id"]
+        blob = json.dumps({"payload": "sign in to deed", "owner": seller, "authorization": "x"})
+        try:
+            view(TESTNET, rep["name"], "w_resolve_auth", {"path": [], "authorization": blob})
+            refused = False
+        except Exception:
+            refused = True
+        if cur != seller:
+            check(refused, f"A4    live: the old owner {seller} still can't sign in as {rep['name']} (NEP-641)")
+        st = view(TESTNET, rep["name"], "hos_agent_status", {"extension": agent})
+        check(not st["extension_enabled"] and st["grant"] is None, f"G1    live: the old agent {agent} is still disabled, no grant")
+    except Exception as e:
+        check(False, f"live re-read: {e}")
+    list_tx = next((s["tx"] for s in rep["steps"] if s["row"] == "list" and s.get("tx")), None)
+    if list_tx in logs:
+        swept = [json.loads(l[11:]) for l in logs[list_tx] if l.startswith("EVENT_JSON:") and "swept_near" in l]
+        to = [d.get("to") or d.get("payout_account") or d.get("receiver_id") for e in swept for d in (e["data"] if isinstance(e["data"], list) else [e["data"]])]
+        check(seller in to, f"G3    the listing's sweep event paid the seller ({', '.join(str(x) for x in to) or 'no sweep event'})")
 
 if runtime:
     print("\n== 4. Hosted Preflight runtime")
     try:
-        h = json.load(urllib.request.urlopen(runtime.rstrip("/") + "/v1/health", timeout=30))
-        check(True, f"{runtime} up · model {h['model']} · can_answer {h['can_answer']}")
-        check(act is not None and h["config_hash"] == act["config_hash"], "runtime config fingerprint = the Deed's on-chain activation")
+        base = runtime.rstrip("/")
+        h = json.load(urllib.request.urlopen(base + "/v1/health", timeout=30))
+        check(True, f"{runtime} up · model {h['model']} · can_answer {h['can_answer']} · can_settle {h.get('can_settle')}")
+        raw = urllib.request.urlopen(base + "/v1/config/raw", timeout=30).read()
+        served = hashlib.sha256(raw).hexdigest()
+        local = hashlib.sha256(open(os.path.join(ROOT, "runtime", "preflight.config.json"), "rb").read()).hexdigest()
+        check(served == h["config_hash"] == local, f"sha256 of the config bytes it serves ({served[:12]}…) = what it reports = runtime/preflight.config.json here")
+        check(act is not None and served == act["config_hash"], "…and = the fingerprint in the Deed's on-chain activation")
         check(h["runtime_id"] == (act or {}).get("runtime_id"), f"activation names this runtime ({h['runtime_id']})")
+        if act and act.get("runtime_url"):
+            check(act["runtime_url"].rstrip("/") == base, f"activation's on-chain runtime_url = {act['runtime_url']}")
     except Exception as e:
         check(False, f"runtime: {e}")
+
+if DEP.get("deedCodeHash"):
+    print("\n== 5. Deployed Deed contract")
+    try:
+        h = code_hash(TESTNET, DEP["deed"])
+        check(h == DEP["deedCodeHash"], f"{DEP['deed']} code hash {h[:12]}… = recorded at deploy (deploy/testnet.json)")
+    except Exception as e:
+        check(False, f"deed code hash: {e}")
 
 print(f"\n{'ALL CHECKS PASS' if fails == 0 else str(fails) + ' FAILED'}")
 sys.exit(fails)

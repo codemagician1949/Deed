@@ -79,8 +79,7 @@ jobs:
     name: live testnet deployment (read-only, no keys)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Depends on public RPCs; informative, doesn't block merges.
-    continue-on-error: true
+    # Reads public testnet RPCs: if they are down, this fails and says so.
     steps:
       - uses: actions/checkout@v4
       - run: python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app
