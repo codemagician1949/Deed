@@ -12,6 +12,8 @@ export interface ProposedTx {
 }
 export interface Job {
   id: string
+  /** v3: the on-chain job id in the Deed contract. */
+  escrowJobId?: string
   name: string
   payer: string
   amountYocto: string
@@ -20,10 +22,17 @@ export interface Job {
   eraOwner: string | null
   activationVersion: number | null
   ownerAtDelivery?: string | null
-  request: ProposedTx
-  flags: RiskFlag[]
+  /** Absent in the public record (only the payer and the holder see the transaction). */
+  request?: ProposedTx
+  flags: (RiskFlag | { code: string; severity: RiskFlag["severity"]; message?: undefined })[]
+  /** true when this is the public view: question and explanation are left out. */
+  redacted?: boolean
+  verdict?: { model: string | null; final: "SAFE TO SIGN" | "CHECK FIRST" | "DO NOT SIGN"; raised: boolean }
+  settlement?: { outcome: "settled" | "refunded" | "pending"; tx?: string; reason?: string }
   answer?: {
-    explanation: string
+    explanation?: string
+    requestSha256?: string
+    responseSha256?: string
     model: string
     chatId: string
     signature: { text: string; signature: string; signing_address: string; signing_algo: string } | null
@@ -38,8 +47,8 @@ type V = "SAFE TO SIGN" | "CHECK FIRST" | "DO NOT SIGN"
 const RANK: V[] = ["SAFE TO SIGN", "CHECK FIRST", "DO NOT SIGN"]
 /** Same rule as runtime/src/verdict.ts: the stricter of the model's verdict and the flags' rating. */
 export function finalVerdict(job: Pick<Job, "answer" | "flags">): { model: V | null; final: V; raised: boolean } | null {
-  if (!job.answer) return null
-  const m = job.answer.explanation.match(/Verdict:\s*(SAFE TO SIGN|CHECK FIRST|DO NOT SIGN)/i)
+  if (!job.answer?.explanation) return null
+  const m = job.answer.explanation!.match(/Verdict:\s*(SAFE TO SIGN|CHECK FIRST|DO NOT SIGN)/i)
   const model = m ? (m[1].toUpperCase() as V) : null
   const floor: V = job.flags.some((f) => f.severity === "high") ? "DO NOT SIGN" : job.flags.some((f) => f.severity === "medium") ? "CHECK FIRST" : "SAFE TO SIGN"
   const final = RANK[Math.max(RANK.indexOf(floor), model ? RANK.indexOf(model) : 1)]
@@ -66,9 +75,15 @@ export function runtimeOverride(): string | null {
   }
 }
 
-/** Where to reach the runtime a Deed's activation names: ?runtime= override, then the directory, then the default. */
-export function runtimeUrlFor(runtimeId: string | null | undefined): string {
-  return runtimeOverride() ?? (runtimeId && CONFIG.runtimes[runtimeId] ? strip(CONFIG.runtimes[runtimeId]) : strip(CONFIG.runtime))
+/**
+ * Where to reach the runtime a Deed's activation names: ?runtime= override, then the URL the owner
+ * recorded on chain in the activation, then the directory, then the default.
+ */
+export function runtimeUrlFor(runtimeId: string | null | undefined, runtimeUrl?: string | null): string {
+  return (
+    runtimeOverride() ??
+    (runtimeUrl ? strip(runtimeUrl) : runtimeId && CONFIG.runtimes[runtimeId] ? strip(CONFIG.runtimes[runtimeId]) : strip(CONFIG.runtime))
+  )
 }
 
 /** Every runtime we know of (to collect a Deed's jobs across runtime changes). */
@@ -87,29 +102,35 @@ export const runtimeHealth = (base?: string) => call<Health>("/v1/health", undef
  * The client-side checks of docs/CLIENTS.md (3 and 4): the runtime we're about to pay through is the one
  * the Deed's current activation names, running the exact config the owner signed.
  */
-export function serviceChecks(health: Health | null, activation: { runtime_id: string; config_hash: string } | null | undefined) {
-  return [
+export function serviceChecks(
+  health: Health | null,
+  activation: { runtime_id: string; config_hash: string; runtime_url?: string | null } | null | undefined,
+  url: string,
+) {
+  const checks = [
     { label: "This runtime is the one the owner switched on", ok: !!health && !!activation && health.runtime_id === activation.runtime_id },
-    { label: "It runs the exact config the owner signed", ok: !!health && !!activation && health.config_hash === activation.config_hash },
+    { label: "It reports the config fingerprint the owner signed", ok: !!health && !!activation && health.config_hash === activation.config_hash },
   ]
+  if (activation?.runtime_url) checks.unshift({ label: "Its address is the one recorded on chain", ok: strip(activation.runtime_url) === strip(url) })
+  return checks
 }
 export const riskPreview = (request: ProposedTx) =>
   call<{ flags: RiskFlag[] }>("/v1/flags", { method: "POST", body: JSON.stringify({ request }) }).then((r) => r.body.flags)
-/** Must match runtime/src/nep413.ts jobMessage exactly: binds the Deed, the payment and the exact request. */
-export const RECIPIENT = "deed-preflight"
-export async function jobMessage(name: string, paymentTx: string, request: ProposedTx): Promise<string> {
+/** sha256 (hex) of JSON.stringify(request): what pay_job binds the payment to (runtime/src/jobs.ts requestHash). */
+export async function requestHash(request: ProposedTx): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(request)))
-  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")
-  return `Preflight job\nDeed: ${name}\nPayment: ${paymentTx}\nRequest sha256: ${hex}`
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-export const submitJob = (base: string, input: {
-  name: string
-  payment_tx: string
-  sender: string
-  request: ProposedTx
-  auth: { public_key: string; signature: string; nonce: string }
-}) =>
+/** Must match runtime/src/owner.ts ownerMessage exactly. */
+export const OWNER_RECIPIENT = "deed-console"
+export const ownerMessage = (name: string, issuedAt: string) => `Deed holder sign-in\nDeed: ${name}\nIssued: ${issuedAt}`
+
+/** The full job record (questions and answers) for the Deed's current holder, proven by a NEP-413 signature. */
+export const ownerJobs = (base: string, body: { name: string; account: string; public_key: string; signature: string; nonce: string; issued_at: string }) =>
+  call<{ error?: string; jobs?: Job[] }>("/v1/owner/jobs", { method: "POST", body: JSON.stringify(body) }, base)
+
+export const submitJob = (base: string, input: { job_id: string; request: ProposedTx }) =>
   call<{ error?: string; job?: Job }>("/v1/jobs", { method: "POST", body: JSON.stringify(input) }, base)
 
 /** A Deed's jobs from every known runtime (after a buyer switches runtimes, older jobs stay on the old one). Rejects only if none answers. */

@@ -31,7 +31,7 @@ function Inline({ text }: { text: string }) {
   )
 }
 
-export function Flags({ flags }: { flags: RiskFlag[] }) {
+export function Flags({ flags }: { flags: (RiskFlag | { code: string; severity: RiskFlag["severity"]; message?: string })[] }) {
   if (!flags.length) return <p className="text-sm text-muted-foreground">No risk flags.</p>
   return (
     <ul className="space-y-2">
@@ -46,7 +46,7 @@ export function Flags({ flags }: { flags: RiskFlag[] }) {
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <span>
             <span className="mr-1.5 font-mono text-[10px] tracking-wide uppercase opacity-80">{f.severity}</span>
-            {f.message}
+            {f.message ?? f.code.replace(/_/g, " ")}
           </span>
         </motion.li>
       ))}
@@ -58,15 +58,15 @@ const STATUS: Record<Job["status"], { label: string; icon: typeof Clock; cls: st
   processing: { label: "Answering…", icon: Clock, cls: "text-primary" },
   served: { label: "Answered", icon: BadgeCheck, cls: "text-success" },
   awaiting_activation: { label: "Held: owner hasn't switched on", icon: Clock, cls: "text-info" },
-  refund_due: { label: "Refund due", icon: Undo2, cls: "text-primary" },
+  refund_due: { label: "Refund pending on chain", icon: Undo2, cls: "text-primary" },
   refunded: { label: "Refunded", icon: Undo2, cls: "text-muted-foreground" },
 }
 
 export function JobCard({ job }: { job: Job }) {
   const s = STATUS[job.status]
-  const v = finalVerdict(job)
+  const v = job.answer?.explanation ? finalVerdict(job) : job.verdict ?? null
   const verdict = v?.final
-  const body = job.answer?.explanation.replace(/\n?Verdict:.*$/im, "").trim()
+  const body = job.answer?.explanation?.replace(/\n?Verdict:.*$/im, "").trim()
   const sig = job.answer?.check
   return (
     <div className="space-y-4 rounded-3xl border border-border bg-card p-5">
@@ -81,6 +81,11 @@ export function JobCard({ job }: { job: Job }) {
       {body && (
         <p className="text-sm leading-relaxed whitespace-pre-line">
           <Inline text={body} />
+        </p>
+      )}
+      {job.redacted && job.answer && (
+        <p className="text-xs text-muted-foreground">
+          The question and the explanation are private to the customer and the Deed's holder. Their sha256 hashes (signed by the enclave) are below.
         </p>
       )}
       {verdict && (
@@ -110,9 +115,18 @@ export function JobCard({ job }: { job: Job }) {
           )}
         </div>
         <div className="flex flex-wrap gap-3 sm:justify-end">
-          <a className="inline-flex items-center gap-1 hover:text-foreground" href={explorerTx(job.id)} target="_blank" rel="noreferrer">
-            payment <ExternalLink className="size-3" />
-          </a>
+          {job.escrowJobId ? (
+            <span className="font-mono">job {job.escrowJobId}</span>
+          ) : (
+            <a className="inline-flex items-center gap-1 hover:text-foreground" href={explorerTx(job.id)} target="_blank" rel="noreferrer">
+              payment <ExternalLink className="size-3" />
+            </a>
+          )}
+          {job.settlement?.tx && job.settlement.outcome === "settled" && (
+            <a className="inline-flex items-center gap-1 text-success hover:text-foreground" href={explorerTx(job.settlement.tx)} target="_blank" rel="noreferrer">
+              paid into the name <ExternalLink className="size-3" />
+            </a>
+          )}
           {job.refundTx && (
             <a className="inline-flex items-center gap-1 hover:text-foreground" href={explorerTx(job.refundTx)} target="_blank" rel="noreferrer">
               refund <ExternalLink className="size-3" />
@@ -125,6 +139,11 @@ export function JobCard({ job }: { job: Job }) {
           <div className="mb-1 flex items-center gap-1.5 font-medium">
             <Fingerprint className="size-3.5" /> Signed inside a secure enclave (NEAR AI, {job.answer.model})
           </div>
+          {job.answer.responseSha256 && (
+            <p className="mb-1 font-mono text-[10px] break-all text-muted-foreground">
+              question {job.answer.requestSha256?.slice(0, 16)}… · answer {job.answer.responseSha256.slice(0, 16)}…
+            </p>
+          )}
           {sig ? (
             <ul className="space-y-0.5 text-muted-foreground">
               <li>{sig.hashesMatch ? "✓" : "✗"} signature covers the exact question and answer bytes</li>

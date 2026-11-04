@@ -11,8 +11,7 @@ const STEPS = [
   { title: "The name moves to Maya", body: "One step: the account, its name and its record now belong to her." },
   { title: "Kofi's keys stop working", body: "The account's own wallet wipes every permission Kofi or his agent had. Not a promise; it's in the code." },
   { title: "Kofi gets what he earned", body: "The 4.2 NEAR his service earned goes to Kofi automatically, in the same step." },
-  { title: "5-minute settlement window", body: "Kofi's payment waits 5 minutes before anyone can release it, a simple safety margin before money leaves the escrow." },
-  { title: "Kofi is paid", body: "39 NEAR to Kofi, 1 NEAR royalty to the template creator." },
+  { title: "Kofi is paid", body: "In the same transaction: 39 NEAR to Kofi, 1 NEAR royalty to the template creator." },
   { title: "Maya switches it on", body: "The service starts answering again and earning into the same name, now for Maya." },
 ]
 const LAST = STEPS.length - 1

@@ -41,9 +41,13 @@ export function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           {busy || !ready ? <Loader2 className="animate-spin" /> : <Wallet />} Connect a NEAR testnet wallet
         </Button>
         <p className="-mt-2 text-center text-[11px] text-muted-foreground">
-          MyNearWallet, Meteor, HOT, Intear and others. No wallet yet? Create a free testnet account at{" "}
-          <a className="underline" href="https://testnet.mynearwallet.com" target="_blank" rel="noreferrer">
-            testnet.mynearwallet.com
+          Meteor, Intear and other NEAR wallets. No wallet yet? Create a free testnet account in{" "}
+          <a className="underline" href="https://wallet.meteorwallet.app" target="_blank" rel="noreferrer">
+            Meteor Wallet
+          </a>{" "}
+          (switch its network to Testnet), then get test NEAR from{" "}
+          <a className="underline" href="https://near-faucet.io" target="_blank" rel="noreferrer">
+            near-faucet.io
           </a>
           .
         </p>

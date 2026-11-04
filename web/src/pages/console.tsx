@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { Eye, Loader2, Lock, Power, RefreshCw, Tag, Undo2, Wallet } from "lucide-react"
+import { Eye, KeyRound, Loader2, Lock, Power, RefreshCw, Tag, Undo2, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,9 @@ import { AnimatedNumber, Page, Reveal, Stagger, StaggerItem, ease } from "@/comp
 import { useDeeds } from "@/lib/data"
 import { explorerTx, near } from "@/lib/format"
 import { useWallet } from "@/lib/wallet"
-import { activate, cancel, list } from "@/lib/actions"
+import { activate, cancel, defaultRuntimeUrl, list } from "@/lib/actions"
+import { JobCard } from "@/components/job-card"
+import { OWNER_RECIPIENT, ownerJobs, ownerMessage, runtimeUrlFor, type Job } from "@/lib/runtime"
 import { CONFIG } from "@/lib/config"
 import type { LiveDeed } from "@/lib/live"
 
@@ -110,6 +112,7 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
   const [price, setPrice] = useState(deed.activation ? String(deed.service.priceNear) : "0.05")
   const [ask, setAsk] = useState("1")
   const [runtimeId, setRuntimeId] = useState(deed.activation?.runtime_id ?? CONFIG.root)
+  const [runtimeUrl, setRuntimeUrl] = useState(deed.activation?.runtime_url ?? defaultRuntimeUrl(deed.activation?.runtime_id ?? CONFIG.root) ?? "")
   const mineEarned = deed.holders.find((h) => !h.to)?.earnedNear ?? 0
   const listed = deed.status === "listed"
 
@@ -186,7 +189,7 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
               <Button
                 className="rounded-full"
                 disabled={!!busy || preview || !validNear(price)}
-                onClick={() => run("activate", () => activate(call, deed, price, runtimeId.trim()), "Service switched on under your name.")}
+                onClick={() => run("activate", () => activate(call, deed, price, runtimeId.trim(), runtimeUrl.trim() || null), "Service switched on under your name.")}
               >
                 {busy === "activate" ? <Loader2 className="animate-spin" /> : <Power />} {deed.status === "serving" ? "Update" : "Switch on"}
               </Button>
@@ -199,6 +202,8 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
                 yourself (<a className="underline" href="https://github.com/codemagician1949/Deed/blob/main/docs/BUYER-RUNBOOK.md" target="_blank" rel="noreferrer">how</a>). Only the runtime you name here may serve it.
               </p>
               <Input value={runtimeId} onChange={(e) => setRuntimeId(e.target.value)} className="mt-2 h-8 rounded-full font-mono text-xs" aria-label="Runtime account id" />
+              <p className="mt-2">Its public https address, recorded on chain so apps refuse any other server:</p>
+              <Input value={runtimeUrl} onChange={(e) => setRuntimeUrl(e.target.value)} placeholder="https://…" className="mt-1 h-8 rounded-full font-mono text-xs" aria-label="Runtime URL" />
             </details>
           </div>
           <div className="space-y-3 bg-card p-6">
@@ -223,9 +228,66 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
           </div>
         </div>
       )}
+      {!preview && <HolderJobs deed={deed} />}
       {preview && (
         <div className="border-t border-border bg-muted/30 px-6 py-3 text-xs text-muted-foreground">
           Preview mode shows the owner's view of real data but can't sign. Connect a NEAR testnet wallet to act.
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Holder-only: the full questions and answers customers paid for. The runtime releases them only after
+ * checking a fresh NEP-413 signature by the wallet, that the key belongs to the account, and that the
+ * account holds the Deed right now (read on chain), so this gate is enforced by the server, not the page.
+ */
+function HolderJobs({ deed }: { deed: LiveDeed }) {
+  const { account, signMessage } = useWallet()
+  const [busy, setBusy] = useState(false)
+  const [jobs, setJobs] = useState<Job[] | null>(null)
+  const open = async () => {
+    if (!account) return
+    setBusy(true)
+    try {
+      const issuedAt = new Date().toISOString()
+      const s = await signMessage(ownerMessage(deed.id, issuedAt), OWNER_RECIPIENT)
+      const base = runtimeUrlFor(deed.activation?.runtime_id, deed.activation?.runtime_url)
+      const r = await ownerJobs(base, { name: deed.id, account, public_key: s.public_key, signature: s.signature, nonce: s.nonce, issued_at: issuedAt })
+      if (!r.body.jobs) throw new Error(r.body.error ?? `runtime returned ${r.status}`)
+      setJobs(r.body.jobs)
+    } catch (e) {
+      toast.error("Not opened", { description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-3 border-t border-border bg-card p-6">
+      <div className="flex items-center gap-2 font-medium">
+        <KeyRound className="size-4" /> Your customers' questions (holder only)
+      </div>
+      {jobs === null ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            The public page shows outcomes and signatures only. Sign a message in your wallet (no fee) to prove you hold this Deed right now; the runtime
+            checks it against the registry and shows you every question and answer.
+          </p>
+          <Button variant="outline" className="rounded-full" disabled={busy} onClick={open}>
+            {busy ? <Loader2 className="animate-spin" /> : <KeyRound />} Sign in as the holder
+          </Button>
+        </>
+      ) : jobs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No jobs on this runtime yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {jobs.slice(0, 10).map((j) => (
+            <div key={j.id} className="space-y-2">
+              {j.request && <pre className="max-h-32 overflow-auto rounded-xl bg-muted/50 p-2 font-mono text-[11px]">{JSON.stringify(j.request, null, 1)}</pre>}
+              <JobCard job={j} />
+            </div>
+          ))}
         </div>
       )}
     </div>

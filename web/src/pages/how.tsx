@@ -43,8 +43,8 @@ const FAQ = [
     a: "Your payment waits in escrow. If the name doesn't arrive, the escrow sends every coin back to you in the same step.",
   },
   {
-    q: "Why does the seller wait 5 minutes to get paid?",
-    a: "It's a short settlement window before money leaves the escrow, kept as a safety margin. When it ends, anyone can release the payment. The seller is always paid for a completed sale; if the buyer ever sends the name back to the escrow, it stays theirs to take back, and they don't get a refund.",
+    q: "What if I pay for an answer and nothing comes back?",
+    a: "Your payment never goes to the service's operator. The Deed contract holds it until the answer is delivered, then pays it into the Deed's own wallet. If anything fails, it goes back to you, and after 15 minutes anyone can trigger that refund.",
   },
   {
     q: "Can the seller take the secret recipe?",

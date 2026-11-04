@@ -294,7 +294,7 @@ const TICKER = [
   ["Old owner tries to sign in as the name", "NOT_AN_OWNER"],
   ["Old owner tries to sell it again", "OnlyOwner"],
   ["Old owner switches the service back on", "only the current owner"],
-  ["Seller grabs the money before it's final", "revert window still open"],
+  ["Old owner's service collects a job after the sale", "refunded to the customer on chain"],
 ]
 
 function AttackTicker() {

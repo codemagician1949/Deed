@@ -18,6 +18,8 @@ export interface Activation {
   version: number
   nonce: string
   activated_at_ns: string
+  /** v3: the runtime's public URL, recorded on chain by the owner. */
+  runtime_url?: string | null
 }
 export interface Listing {
   token_id: string
@@ -169,7 +171,7 @@ function historyFrom(tokenId: string, txs: TxSummary[]): HistoryEvent[] {
           push({
             kind: "proceeds_paid",
             title: `${d.sale.seller} was paid for the sale`,
-            detail: `after the 5-minute safety window`,
+            detail: d.sale.final_after_ns === d.sale.sold_at_ns ? "in the same transaction as the sale" : "after the 5-minute window (contract v2)",
             amountNear: toNear(BigInt(d.sale.price_yocto) - BigInt(d.sale.royalty_yocto)),
             actor: d.sale.seller,
           })
@@ -187,6 +189,41 @@ function historyFrom(tokenId: string, txs: TxSummary[]): HistoryEvent[] {
         case "deed:returned_to_buyer_listing":
           if (d.listing?.token_id !== tokenId) break
           push({ kind: "listed", title: `Name was back in the escrow after the sale: recorded as ${d.listing.seller}'s to take back` })
+          break
+        case "deed:job_paid":
+          if (d.job?.token_id !== tokenId) break
+          push({
+            kind: "job_served",
+            title: `${d.job.payer} paid for an answer (held by the contract until it's delivered)`,
+            amountNear: toNear(d.job.amount_yocto),
+            actor: d.job.payer,
+            source: isDemoAccount(d.job.payer) ? "demo" : "external",
+          })
+          break
+        case "deed:job_settled":
+          if (d.job?.token_id !== tokenId) break
+          push({
+            kind: "earned",
+            title: `Answer delivered: ${toNear(d.job.amount_yocto)} NEAR paid into the name`,
+            detail: `job ${d.job.id} for ${d.job.payer} · answer sha256 ${String(d.job.state?.Settled?.answer_hash ?? "").slice(0, 12)}…`,
+            amountNear: toNear(d.job.amount_yocto),
+            actor: d.job.payer,
+            source: isDemoAccount(d.job.payer) ? "demo" : "external",
+          })
+          break
+        case "deed:job_refunded":
+          if (d.job?.token_id !== tokenId) break
+          push({
+            kind: "refund",
+            title: `Job ${d.job.id} refunded to ${d.job.payer}`,
+            detail: d.job.state?.Refunded?.reason,
+            amountNear: toNear(d.job.amount_yocto),
+            actor: d.job.payer,
+          })
+          break
+        case "deed:name_recovered":
+          if (d.token_id !== tokenId) break
+          push({ kind: "listed", title: `Name returned to ${d.to} from the escrow` })
           break
         case "deed:cancelled":
           if (d.token_id !== tokenId) break

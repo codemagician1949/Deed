@@ -6,6 +6,12 @@ import { PREFLIGHT_CONFIG_HASH } from "./templates"
 import type { CallParams } from "./wallet"
 import type { LiveDeed } from "./live"
 
+/** The public URL of a known runtime (recorded on chain at activation so clients can refuse impostors). */
+export const defaultRuntimeUrl = (runtimeId: string): string | null => {
+  const u = CONFIG.runtimes[runtimeId]
+  return u && u.startsWith("https://") ? u.replace(/\/+$/, "") : null
+}
+
 type Call = (p: CallParams) => Promise<string>
 
 /** Buyer pays exactly the listed price; the escrow hands over the name or refunds. */
@@ -41,7 +47,7 @@ export const claim = (call: Call, d: LiveDeed) => {
 }
 
 /** Owner switches the service on (or updates it) with the next version number. */
-export const activate = (call: Call, d: LiveDeed, priceNear: string, runtimeId = CONFIG.root) =>
+export const activate = (call: Call, d: LiveDeed, priceNear: string, runtimeId = CONFIG.root, runtimeUrl: string | null = defaultRuntimeUrl(runtimeId)) =>
   call({
     receiverId: CONFIG.deed,
     method: "activate",
@@ -52,6 +58,7 @@ export const activate = (call: Call, d: LiveDeed, priceNear: string, runtimeId =
       config_hash: PREFLIGHT_CONFIG_HASH,
       price_yocto: nearToYocto(priceNear),
       version: Math.max(d.activation?.version ?? 0, d.maxVersion) + 1,
+      runtime_url: runtimeUrl,
     },
     tgas: 100,
   })
@@ -67,10 +74,10 @@ export const rent = (call: Call, label: string, totalYocto: string) =>
   })
 
 /** Switches Preflight on for a name the caller just rented (first version). */
-export const activateNew = (call: Call, tokenId: string, priceNear: string, runtimeId = CONFIG.root) =>
+export const activateNew = (call: Call, tokenId: string, priceNear: string, runtimeId = CONFIG.root, runtimeUrl: string | null = defaultRuntimeUrl(runtimeId)) =>
   call({
     receiverId: CONFIG.deed,
     method: "activate",
-    args: { token_id: tokenId, runtime_id: runtimeId, config_hash: PREFLIGHT_CONFIG_HASH, price_yocto: nearToYocto(priceNear), version: 1 },
+    args: { token_id: tokenId, runtime_id: runtimeId, config_hash: PREFLIGHT_CONFIG_HASH, price_yocto: nearToYocto(priceNear), version: 1, runtime_url: runtimeUrl },
     tgas: 100,
   })

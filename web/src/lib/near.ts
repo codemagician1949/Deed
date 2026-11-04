@@ -150,3 +150,18 @@ export async function transactions(hashes: string[]): Promise<TxSummary[]> {
   }
   return out
 }
+
+/** The decoded return value of a finished function-call transaction (fallback when a wallet doesn't return it). */
+export async function txReturnValue(hash: string, sender: string): Promise<unknown> {
+  for (let i = 0; i < 6; i++) {
+    const r = await fetch(CONFIG.rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tx", params: { tx_hash: hash, sender_account_id: sender, wait_until: "FINAL" } }),
+    }).then((x) => x.json() as Promise<{ result?: { status?: { SuccessValue?: string } } }>)
+    const sv = r.result?.status?.SuccessValue
+    if (sv) return JSON.parse(atob(sv))
+    await new Promise((res) => setTimeout(res, 1500))
+  }
+  return null
+}

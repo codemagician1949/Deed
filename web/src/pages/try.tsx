@@ -9,16 +9,19 @@ import { Flags, JobCard } from "@/components/job-card"
 import { Page, Reveal, ease } from "@/components/motion"
 import { useDeeds } from "@/lib/data"
 import { near } from "@/lib/format"
-import { EXAMPLES, jobMessage, RECIPIENT, riskPreview, runtimeHealth, runtimeUrlFor, serviceChecks, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
+import { EXAMPLES, requestHash, riskPreview, runtimeHealth, runtimeUrlFor, serviceChecks, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
+import { CONFIG } from "@/lib/config"
+import { txReturnValue } from "@/lib/near"
 import { useWallet } from "@/lib/wallet"
 import { cn } from "@/lib/utils"
 
-type Step = "idle" | "paying" | "signing" | "asking" | "done"
+type Step = "idle" | "paying" | "asking" | "done"
 
 export function TryPage() {
   const { deeds } = useDeeds()
-  const { account, preview, connect, transfer, signMessage } = useWallet()
-  const serving = deeds.filter((d) => d.status === "serving")
+  const { account, preview, connect, callValue } = useWallet()
+  // Switched on, including Deeds listed for sale (the seller's service keeps answering until the sale).
+  const serving = deeds.filter((d) => d.activation && (d.status === "serving" || d.status === "listed"))
   const [deedId, setDeedId] = useState<string>("")
   const deed = serving.find((d) => d.id === deedId) ?? serving[0]
   const [text, setText] = useState(JSON.stringify(EXAMPLES[1].tx, null, 2))
@@ -27,7 +30,7 @@ export function TryPage() {
   const [step, setStep] = useState<Step>("idle")
   const [job, setJob] = useState<Job | null>(null)
   // The runtime this Deed's owner switched on (may differ from the default after a buyer brings their own).
-  const deedRuntime = runtimeUrlFor(deed?.activation?.runtime_id)
+  const deedRuntime = runtimeUrlFor(deed?.activation?.runtime_id, deed?.activation?.runtime_url)
   const [deedHealth, setDeedHealth] = useState<{ url: string; health: Health | null } | null>(null)
   useEffect(() => {
     if (!deed) return
@@ -39,7 +42,7 @@ export function TryPage() {
       live = false
     }
   }, [deed, deedRuntime])
-  const checks = serviceChecks(deedHealth?.url === deedRuntime ? deedHealth.health : null, deed?.activation)
+  const checks = serviceChecks(deedHealth?.url === deedRuntime ? deedHealth.health : null, deed?.activation, deedRuntime)
   const checksPass = checks.every((c) => c.ok)
 
   const parsed = useMemo<ProposedTx | null>(() => {
@@ -74,12 +77,18 @@ export function TryPage() {
     try {
       setStep("paying")
       const price = deed.activation?.price_yocto ?? "0"
-      const paymentTx = await transfer(deed.id, price)
-      // Prove this account paid, and bind the payment to this exact question (NEP-413).
-      setStep("signing")
-      const auth = await signMessage(await jobMessage(deed.id, paymentTx, parsed), RECIPIENT)
+      // The Deed contract holds the payment, bound to this exact question (sha256), until the runtime answers.
+      const { hash, value } = await callValue({
+        receiverId: CONFIG.deed,
+        method: "pay_job",
+        args: { token_id: deed.id, request_hash: await requestHash(parsed) },
+        depositYocto: price,
+        tgas: 30,
+      })
+      const jobId = value ?? (await txReturnValue(hash, account))
+      if (!jobId) throw new Error(`Paid (${hash}) but couldn't read the job id. It will be refundable on chain after 15 minutes.`)
       setStep("asking")
-      const r = await submitJob(deedRuntime, { name: deed.id, payment_tx: paymentTx, sender: account, request: parsed, auth })
+      const r = await submitJob(deedRuntime, { job_id: String(jobId), request: parsed })
       if (!r.body.job) throw new Error(r.body.error ?? `runtime returned ${r.status}`)
       setJob(r.body.job)
       setStep("done")
@@ -183,21 +192,19 @@ export function TryPage() {
                     runtime {deed?.activation?.runtime_id} · {deedRuntime}
                   </li>
                 </ul>
-                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || (deedHealth?.url === deedRuntime && !checksPass) || step === "paying" || step === "signing" || step === "asking"} onClick={ask}>
-                  {step === "paying" || step === "signing" || step === "asking" ? <Loader2 className="animate-spin" /> : account && !preview ? <ScanSearch /> : <Wallet />}
+                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || (deedHealth?.url === deedRuntime && !checksPass) || step === "paying" || step === "asking"} onClick={ask}>
+                  {step === "paying" || step === "asking" ? <Loader2 className="animate-spin" /> : account && !preview ? <ScanSearch /> : <Wallet />}
                   {step === "paying"
-                    ? "1/2 Confirm the payment in your wallet…"
-                    : step === "signing"
-                      ? "2/2 Sign the request (no fee) so only you can use this payment…"
-                      : step === "asking"
-                      ? "Checking owner, payment, asking the enclave…"
+                    ? "Confirm the payment in your wallet (held by the Deed contract)…"
+                    : step === "asking"
+                      ? "Checking the owner, asking the enclave, settling on chain…"
                       : account && !preview
                         ? `Pay ${deed ? near(deed.service.priceNear) : ""} and explain`
                         : "Connect a testnet wallet to pay"}
                 </Button>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  The payment goes to the Deed's own account (its owner earns it). The runtime checks, live, that the person who owns
-                  the Deed right now switched it on. If anything fails after you pay, the operator refunds you.
+                  Your payment is held by the Deed contract, bound to this exact question. When the answer is delivered it is paid into
+                  the Deed's own wallet; if anything fails, the contract returns it to you, and after 15 minutes anyone can trigger that refund.
                   {deedHealth?.health && !deedHealth.health.can_answer && " Note: this runtime has no AI key configured, so paid jobs are refunded."}
                   {deedHealth?.url === deedRuntime && !checksPass && " Paying is blocked: this runtime isn't the one the Deed's current activation names. If the owner runs their own, open this page with ?runtime=<their URL>."}
                 </p>

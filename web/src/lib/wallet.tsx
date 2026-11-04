@@ -26,6 +26,8 @@ interface WalletState {
   disconnect: () => Promise<void>
   /** Sends one function call and returns the transaction hash. */
   call: (p: CallParams) => Promise<string>
+  /** Same, plus the call's decoded return value (e.g. the job id from pay_job). */
+  callValue: (p: CallParams) => Promise<{ hash: string; value: unknown }>
   /** Sends NEAR to an account and returns the transaction hash. */
   transfer: (receiverId: string, yocto: string) => Promise<string>
   /** NEP-413 signature by the connected account (proves who is asking). */
@@ -34,11 +36,27 @@ interface WalletState {
 
 const Ctx = createContext<WalletState | null>(null)
 
+// Set by WalletProvider: re-reads the connected account from NEAR Connect; true if one is connected.
+let refresh: (c: NearConnectorT) => Promise<boolean> = async () => false
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<string | null>(null)
   const [preview, setPreview] = useState(false)
   const [ready, setReady] = useState(false)
   const connectorRef = useRef<NearConnectorT | null>(null)
+  refresh = async (c) => {
+    try {
+      const { accounts } = await c.getConnectedWallet()
+      if (accounts[0]) {
+        setAccount(accounts[0].accountId)
+        setPreview(false)
+        return true
+      }
+    } catch {
+      /* not connected */
+    }
+    return false
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -52,23 +70,38 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setPreview(false)
       })
       c.on("wallet:signOut", () => setAccount(null))
-      try {
-        const { accounts } = await c.getConnectedWallet()
-        if (!cancelled && accounts[0]) setAccount(accounts[0].accountId)
-      } catch {
-        /* not connected yet */
-      }
+      await refresh(c)
       if (!cancelled) setReady(true)
     })
+    // Some wallets (Meteor Web) finish signing in inside their own window and report back late or not at
+    // all; the connection is saved either way. Re-read it whenever the user comes back to this tab.
+    const onFocus = () => connectorRef.current && void refresh(connectorRef.current)
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onFocus)
     return () => {
       cancelled = true
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onFocus)
     }
   }, [])
 
   const connect = useCallback(async () => {
     const c = connectorRef.current
     if (!c) throw new Error("Wallet library is still loading. Try again in a second.")
-    await c.connect()
+    // Poll the saved connection while the wallet window is open, in case its sign-in event never arrives.
+    let done = false
+    const poll = (async () => {
+      for (let i = 0; i < 90 && !done; i++) {
+        await new Promise((r) => setTimeout(r, 2000))
+        if (await refresh(c)) return
+      }
+    })()
+    try {
+      await c.connect()
+    } finally {
+      done = (await refresh(c)) || done
+    }
+    void poll
   }, [])
 
   const disconnect = useCallback(async () => {
@@ -81,7 +114,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAccount(null)
   }, [preview])
 
-  const call = useCallback(
+  const callValue = useCallback(
     async ({ receiverId, method, args, depositYocto = "0", tgas = 100 }: CallParams) => {
       if (preview) throw new Error("Preview mode can't sign. Connect a NEAR testnet wallet to do this.")
       const c = connectorRef.current
@@ -98,10 +131,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const m = status.match(/panicked: ([^"\\]+)/)
         throw Object.assign(new Error(m ? m[1] : "The transaction failed on chain."), { hash })
       }
-      return hash
+      const sv = (out as { status?: { SuccessValue?: string } })?.status?.SuccessValue
+      let value: unknown = null
+      try {
+        value = sv ? JSON.parse(atob(sv)) : null
+      } catch {
+        value = null
+      }
+      return { hash, value }
     },
     [account, preview],
   )
+  const call = useCallback(async (p: CallParams) => (await callValue(p)).hash, [callValue])
 
   const transfer = useCallback(
     async (receiverId: string, yocto: string) => {
@@ -144,6 +185,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connect,
       disconnect,
       call,
+      callValue,
       transfer,
       signMessage,
       previewAs: (a) => {
@@ -151,7 +193,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setPreview(true)
       },
     }),
-    [account, preview, ready, connect, disconnect, call, transfer, signMessage],
+    [account, preview, ready, connect, disconnect, call, callValue, transfer, signMessage],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

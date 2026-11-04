@@ -15,7 +15,7 @@ const STEPS = [
   "Payouts are pointed at the seller",
   "The name moves to you",
   "The seller's keys are wiped by the wallet",
-  "After a 5-minute safety window, the seller is paid",
+  "The seller is paid in the same transaction (minus a 2.5% royalty)",
 ]
 
 type Phase = "review" | "signing" | "done" | "failed"
@@ -73,6 +73,7 @@ export function BuyDialog({
           <span className="text-sm text-muted-foreground">You pay (testnet NEAR)</span>
           <span className="font-heading text-3xl text-primary">{near(deed.listing.priceNear, 2)}</span>
         </div>
+        <LeaseNote leaseUntil={deed.leaseUntil} />
 
         <ol className="space-y-2">
           {STEPS.map((s, i) => {
@@ -121,7 +122,7 @@ export function BuyDialog({
           {phase === "done" && (
             <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl border border-success/30 bg-success/10 p-4 text-center text-sm">
               <div className="font-medium text-success">It's yours.</div>
-              <p className="text-muted-foreground">Open "My Deeds" to switch the service on. The seller's payment unlocks after 5 minutes.</p>
+              <p className="text-muted-foreground">Open "My Deeds" to switch the service on under your name.</p>
               {hash && (
                 <a href={explorerTx(hash)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs underline">
                   View transaction <ExternalLink className="size-3" />
@@ -164,5 +165,18 @@ export function BuyDialog({
         </AnimatePresence>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The name is rented: show when the lease ends, and warn if it's soon (the buyer would have to renew it). */
+function LeaseNote({ leaseUntil }: { leaseUntil: string }) {
+  if (!leaseUntil) return <p className="-mt-1 text-xs text-muted-foreground">Lease end: unknown. Check the name's page before buying.</p>
+  const days = Math.floor((Date.parse(leaseUntil) - Date.now()) / 86_400_000)
+  const soon = days < 30
+  return (
+    <p className={soon ? "-mt-1 text-xs font-medium text-destructive" : "-mt-1 text-xs text-muted-foreground"}>
+      The name is rented until {new Date(leaseUntil).toISOString().slice(0, 10)} ({days} days).
+      {soon ? " That's soon: you'd need to renew it, or House of Stake can reclaim the name." : " After that it must be renewed."}
+    </p>
   )
 }
