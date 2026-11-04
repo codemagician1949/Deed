@@ -48,9 +48,29 @@ export const activate = (call: Call, d: LiveDeed, priceNear: string, runtimeId =
     args: {
       token_id: d.id,
       runtime_id: runtimeId,
-      config_hash: d.activation?.config_hash ?? PREFLIGHT_CONFIG_HASH,
+      // Always the current Preflight config: runtimes serve only the fingerprint they run.
+      config_hash: PREFLIGHT_CONFIG_HASH,
       price_yocto: nearToYocto(priceNear),
       version: Math.max(d.activation?.version ?? 0, d.maxVersion) + 1,
     },
+    tgas: 100,
+  })
+
+/** Rents a name on the registry (the caller becomes its owner). Deposit = registry quote + 0.1 NEAR margin; extra is refunded by the registry. */
+export const rent = (call: Call, label: string, totalYocto: string) =>
+  call({
+    receiverId: CONFIG.registry,
+    method: "rent_sub_account",
+    args: { tla_id: CONFIG.tla, name: label },
+    depositYocto: (BigInt(totalYocto) + 10n ** 23n).toString(),
+    tgas: 300,
+  })
+
+/** Switches Preflight on for a name the caller just rented (first version). */
+export const activateNew = (call: Call, tokenId: string, priceNear: string, runtimeId = CONFIG.root) =>
+  call({
+    receiverId: CONFIG.deed,
+    method: "activate",
+    args: { token_id: tokenId, runtime_id: runtimeId, config_hash: PREFLIGHT_CONFIG_HASH, price_yocto: nearToYocto(priceNear), version: 1 },
     tgas: 100,
   })

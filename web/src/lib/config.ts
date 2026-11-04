@@ -14,6 +14,8 @@ export const CONFIG = {
   root: testnet.root,
   royaltyBps: testnet.royaltyBps,
   mainnetCodeHashes: testnet.mainnetCodeHashes as Record<string, string>,
+  /** Known runtimes: runtime_id (as named in a Deed's activation) → URL. A buyer running their own adds theirs. */
+  runtimes: ((testnet as { runtimes?: Record<string, string> }).runtimes ?? {}) as Record<string, string>,
 }
 
 /** Accounts our own scripts use. Payments from these are labelled "our demo", everything else "outside account" (not proof of independent demand). */

@@ -14,6 +14,7 @@ import { ProofPage } from "@/pages/proof"
 import { HowPage } from "@/pages/how"
 import { ConsolePage } from "@/pages/console"
 import { TryPage } from "@/pages/try"
+import { NewDeedPage } from "@/pages/new"
 
 function ScrollProgress() {
   const { scrollYProgress } = useScroll()
@@ -48,6 +49,7 @@ export default function App() {
                 <Route path="/how" element={<HowPage />} />
                 <Route path="/console" element={<ConsolePage />} />
                 <Route path="/try" element={<TryPage />} />
+                <Route path="/new" element={<NewDeedPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </AnimatePresence>

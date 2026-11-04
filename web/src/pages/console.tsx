@@ -12,6 +12,7 @@ import { useDeeds } from "@/lib/data"
 import { explorerTx, near } from "@/lib/format"
 import { useWallet } from "@/lib/wallet"
 import { activate, cancel, list } from "@/lib/actions"
+import { CONFIG } from "@/lib/config"
 import type { LiveDeed } from "@/lib/live"
 
 /** Gated: shows only Deeds the connected account owns right now (read live from the registry). */
@@ -108,6 +109,7 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [price, setPrice] = useState(deed.activation ? String(deed.service.priceNear) : "0.05")
   const [ask, setAsk] = useState("1")
+  const [runtimeId, setRuntimeId] = useState(deed.activation?.runtime_id ?? CONFIG.root)
   const mineEarned = deed.holders.find((h) => !h.to)?.earnedNear ?? 0
   const listed = deed.status === "listed"
 
@@ -184,12 +186,20 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
               <Button
                 className="rounded-full"
                 disabled={!!busy || preview || !validNear(price)}
-                onClick={() => run("activate", () => activate(call, deed, price), "Service switched on under your name.")}
+                onClick={() => run("activate", () => activate(call, deed, price, runtimeId.trim()), "Service switched on under your name.")}
               >
                 {busy === "activate" ? <Loader2 className="animate-spin" /> : <Power />} {deed.status === "serving" ? "Update" : "Switch on"}
               </Button>
             </div>
             <div className="text-[11px] text-muted-foreground">NEAR per job</div>
+            <details className="text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer">Run it on your own runtime</summary>
+              <p className="mt-2">
+                Which runtime serves this name. Keep <span className="font-mono">{CONFIG.root}</span> (the hosted one), or put the account id of a runtime you run
+                yourself (<a className="underline" href="https://github.com/codemagician1949/Deed/blob/main/docs/HANDOVER.md" target="_blank" rel="noreferrer">how</a>). Only the runtime you name here may serve it.
+              </p>
+              <Input value={runtimeId} onChange={(e) => setRuntimeId(e.target.value)} className="mt-2 h-8 rounded-full font-mono text-xs" aria-label="Runtime account id" />
+            </details>
           </div>
           <div className="space-y-3 bg-card p-6">
             <div className="flex items-center gap-2 font-medium">

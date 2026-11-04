@@ -308,7 +308,7 @@ function ActionCard({ deed, onBuy, onDone }: { deed: LiveDeed; onBuy: () => void
           <div className="text-sm text-muted-foreground">Asking price</div>
           <div className="font-heading text-5xl text-primary">{near(deed.listing.priceNear, 2)}</div>
           <p className="mt-2 text-sm text-muted-foreground">
-            You get the name, its wallet and its public record. The seller's earnings so far went to the seller when they listed.
+            You get the name, its wallet and its public record. The seller's earnings so far went to the seller when they listed. Until it sells, the service keeps answering for the seller, and those payments reach them at the sale.
           </p>
           {account === deed.listing.seller ? (
             <Button

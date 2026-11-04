@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { Loader2, ScanSearch, ShieldQuestion, Wallet } from "lucide-react"
+import { CircleCheck, CircleX, Loader2, ScanSearch, ShieldQuestion, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Aurora } from "@/components/bits"
@@ -9,7 +9,7 @@ import { Flags, JobCard } from "@/components/job-card"
 import { Page, Reveal, ease } from "@/components/motion"
 import { useDeeds } from "@/lib/data"
 import { near } from "@/lib/format"
-import { EXAMPLES, jobMessage, RECIPIENT, riskPreview, runtimeHealth, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
+import { EXAMPLES, jobMessage, RECIPIENT, riskPreview, runtimeHealth, runtimeUrlFor, serviceChecks, submitJob, type Health, type Job, type ProposedTx, type RiskFlag } from "@/lib/runtime"
 import { useWallet } from "@/lib/wallet"
 import { cn } from "@/lib/utils"
 
@@ -23,10 +23,24 @@ export function TryPage() {
   const deed = serving.find((d) => d.id === deedId) ?? serving[0]
   const [text, setText] = useState(JSON.stringify(EXAMPLES[1].tx, null, 2))
   const [flags, setFlags] = useState<RiskFlag[] | null>(null)
-  const [health, setHealth] = useState<Health | null>(null)
   const [offline, setOffline] = useState(false)
   const [step, setStep] = useState<Step>("idle")
   const [job, setJob] = useState<Job | null>(null)
+  // The runtime this Deed's owner switched on (may differ from the default after a buyer brings their own).
+  const deedRuntime = runtimeUrlFor(deed?.activation?.runtime_id)
+  const [deedHealth, setDeedHealth] = useState<{ url: string; health: Health | null } | null>(null)
+  useEffect(() => {
+    if (!deed) return
+    let live = true
+    runtimeHealth(deedRuntime)
+      .then((h) => live && setDeedHealth({ url: deedRuntime, health: h }))
+      .catch(() => live && setDeedHealth({ url: deedRuntime, health: null }))
+    return () => {
+      live = false
+    }
+  }, [deed, deedRuntime])
+  const checks = serviceChecks(deedHealth?.url === deedRuntime ? deedHealth.health : null, deed?.activation)
+  const checksPass = checks.every((c) => c.ok)
 
   const parsed = useMemo<ProposedTx | null>(() => {
     try {
@@ -38,7 +52,7 @@ export function TryPage() {
   }, [text])
 
   useEffect(() => {
-    runtimeHealth().then(setHealth).catch(() => setOffline(true))
+    runtimeHealth().catch(() => setOffline(true)) // the default runtime serves the free flags
   }, [])
   useEffect(() => {
     setFlags(null)
@@ -49,6 +63,10 @@ export function TryPage() {
 
   const ask = async () => {
     if (!deed || !parsed) return
+    if (!checksPass) {
+      toast.error("Not safe to pay", { description: `The runtime at ${deedRuntime} isn't the one this Deed's owner switched on.` })
+      return
+    }
     if (!account || preview) {
       await connect().catch(() => undefined)
       return
@@ -61,7 +79,7 @@ export function TryPage() {
       setStep("signing")
       const auth = await signMessage(await jobMessage(deed.id, paymentTx, parsed), RECIPIENT)
       setStep("asking")
-      const r = await submitJob({ name: deed.id, payment_tx: paymentTx, sender: account, request: parsed, auth })
+      const r = await submitJob(deedRuntime, { name: deed.id, payment_tx: paymentTx, sender: account, request: parsed, auth })
       if (!r.body.job) throw new Error(r.body.error ?? `runtime returned ${r.status}`)
       setJob(r.body.job)
       setStep("done")
@@ -148,7 +166,24 @@ export function TryPage() {
                     </option>
                   ))}
                 </select>
-                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || step === "paying" || step === "signing" || step === "asking"} onClick={ask}>
+                <ul className="mb-3 space-y-1 rounded-2xl border border-border bg-background/60 p-3 text-xs">
+                  {checks.map((c) => (
+                    <li key={c.label} className="flex items-center gap-2">
+                      {deedHealth?.url !== deedRuntime ? (
+                        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                      ) : c.ok ? (
+                        <CircleCheck className="size-3.5 text-primary" />
+                      ) : (
+                        <CircleX className="size-3.5 text-destructive" />
+                      )}
+                      {c.label}
+                    </li>
+                  ))}
+                  <li className="truncate pt-1 font-mono text-[10px] text-muted-foreground" title={deedRuntime}>
+                    runtime {deed?.activation?.runtime_id} · {deedRuntime}
+                  </li>
+                </ul>
+                <Button className="h-11 w-full rounded-xl" disabled={!parsed || offline || (deedHealth?.url === deedRuntime && !checksPass) || step === "paying" || step === "signing" || step === "asking"} onClick={ask}>
                   {step === "paying" || step === "signing" || step === "asking" ? <Loader2 className="animate-spin" /> : account && !preview ? <ScanSearch /> : <Wallet />}
                   {step === "paying"
                     ? "1/2 Confirm the payment in your wallet…"
@@ -163,7 +198,8 @@ export function TryPage() {
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   The payment goes to the Deed's own account (its owner earns it). The runtime checks, live, that the person who owns
                   the Deed right now switched it on. If anything fails after you pay, the operator refunds you.
-                  {health && !health.can_answer && " Note: this runtime has no AI key configured, so paid jobs are refunded."}
+                  {deedHealth?.health && !deedHealth.health.can_answer && " Note: this runtime has no AI key configured, so paid jobs are refunded."}
+                  {deedHealth?.url === deedRuntime && !checksPass && " Paying is blocked: this runtime isn't the one the Deed's current activation names. If the owner runs their own, open this page with ?runtime=<their URL>."}
                 </p>
               </>
             )}
