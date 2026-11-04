@@ -1,0 +1,7 @@
+{
+  "author": "Your name or handle (not on the Deed team)",
+  "written_at": "YYYY-MM-DD",
+  "cases": [
+    { "id": "h1", "label": "safe", "why": "paying a friend 2 NEAR", "tx": { "receiver_id": "friend.testnet", "actions": [{ "type": "Transfer", "params": { "deposit": "2000000000000000000000000" } }] } }
+  ]
+}
