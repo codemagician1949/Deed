@@ -21,6 +21,8 @@ export const CONFIG = {
   rpc: process.env.RPC ?? deploy.rpc,
   txApi: process.env.TX_API ?? "https://tx.test.fastnear.com",
   registry: deploy.registry as string,
+  /** The team account that deployed this replica (its runtime is the hosted one). */
+  root: deploy.root as string,
   deed: deploy.deed as string,
   /** The account owners name as runtime_id when they switch on. Refunds are paid from it. */
   runtimeId: process.env.RUNTIME_ID ?? (deploy.root as string),

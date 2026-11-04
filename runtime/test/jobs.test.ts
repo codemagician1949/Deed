@@ -2,7 +2,7 @@
 // Chain and inference are in-memory fakes so every ordering can be forced deterministically.
 import { describe, expect, test } from "bun:test"
 import { ed25519 } from "@noble/curves/ed25519.js"
-import { resumeAwaiting, submitJob, type Activation, type Answer, type Chain, type Deps, type Job, type JobInput, type Payment } from "../src/jobs"
+import { recordRefund, recoverInterrupted, resumeAwaiting, submitJob, type Activation, type Answer, type Chain, type Deps, type Job, type JobInput, type Payment } from "../src/jobs"
 import { base58Encode, jobMessage, RECIPIENT, signNep413 } from "../src/nep413"
 import { fileStore } from "../src/store"
 import { mkdtempSync } from "node:fs"
@@ -43,9 +43,20 @@ class World implements Chain {
   rotation = 0n
   payments = new Map<string, Payment>()
   down = false
+  listedBy: string | null = null
+  ownerReads = 0
+  /** Runs after the Nth owner read: lets a test change the chain between the runtime's reads. */
+  afterOwnerRead: ((n: number) => void) | null = null
   async owner() {
     if (this.down) throw new Error("rpc unavailable")
-    return this.ownerOf
+    const o = this.ownerOf
+    this.ownerReads++
+    this.afterOwnerRead?.(this.ownerReads)
+    return o
+  }
+  async listingSeller() {
+    if (this.down) throw new Error("rpc unavailable")
+    return this.listedBy
   }
   async activation() {
     if (this.down) throw new Error("rpc unavailable")
@@ -177,7 +188,7 @@ describe("D1: sale in the middle of a paid job", () => {
     expect(d.store.get(tx)!.status).toBe("refund_due")
   })
 
-  test("while listed (escrow owns the name) nothing is served", async () => {
+  test("escrow holds the name with no active listing (sale settling): nothing is served", async () => {
     const w = new World()
     w.sell(ESCROW, T0 - 60_000)
     w.act = act(ESCROW, 9) // even a bogus activation naming the escrow
@@ -317,5 +328,118 @@ describe("inference failure", () => {
     const r = await submit(d, w.pay(17, T0 - 1_000))
     expect(r.http).toBe(502)
     expect(r.job?.status).toBe("refund_due")
+  })
+})
+
+describe("serving while listed", () => {
+  test("listed for sale: the seller's activation keeps serving (payments while listed reach the seller at the sale)", async () => {
+    const w = new World()
+    w.sell(ESCROW, T0 - 60_000) // listing moves the name into the escrow
+    w.listedBy = "kofi.testnet"
+    const d = deps(w)
+    const r = await submit(d, w.pay(30, T0 - 1_000))
+    expect(r.job?.status).toBe("served")
+    expect(r.job?.eraOwner).toBe("kofi.testnet")
+  })
+  test("listed by someone other than the activation owner: not served", async () => {
+    const w = new World()
+    w.sell(ESCROW, T0 - 60_000)
+    w.listedBy = "mallory.testnet"
+    const d = deps(w)
+    const r = await submit(d, w.pay(31, T0 - 1_000))
+    expect(r.job?.status).toBe("awaiting_activation")
+    expect(d.calls()).toBe(0)
+  })
+})
+
+describe("inconsistent reads", () => {
+  test("the name is sold between the runtime's reads: refuse, record nothing, run nothing; a retry is judged afresh", async () => {
+    const w = new World()
+    // First owner read says Kofi; right after it, the name is sold and the buyer activates.
+    w.afterOwnerRead = (n) => {
+      if (n === 1) {
+        w.sell("maya.testnet", T0 - 500)
+        w.act = act("maya.testnet", 2)
+      }
+    }
+    const d = deps(w)
+    const tx = w.pay(32, T0 - 1_000)
+    const r = await submit(d, tx)
+    expect(r.http).toBe(503)
+    expect(d.store.get(tx)).toBeUndefined()
+    expect(d.calls()).toBe(0)
+    w.afterOwnerRead = null
+    const again = await submit(d, tx) // paid before the sale → the seller's era → refund
+    expect(again.job?.status).toBe("refund_due")
+    expect(d.calls()).toBe(0)
+  })
+  test("the activation changes between reads (owner switches runtime): refuse, record nothing", async () => {
+    const w = new World()
+    w.afterOwnerRead = (n) => {
+      if (n === 2) w.act = act("kofi.testnet", 2, "other-runtime.testnet") // between the first and the confirming read
+    }
+    const d = deps(w)
+    const tx = w.pay(33, T0 - 1_000)
+    expect((await submit(d, tx)).http).toBe(503)
+    expect(d.store.get(tx)).toBeUndefined()
+  })
+})
+
+describe("crash recovery", () => {
+  test("a runtime that dies mid-answer leaves the job refund_due on restart, never stuck", async () => {
+    const w = new World()
+    const d = deps(w)
+    const tx = w.pay(34, T0 - 1_000)
+    // Simulate the crash: the job was claimed ("processing") and the process died before answering.
+    d.store.put({ id: tx, name: NAME, payer: "alice.testnet", amountYocto: PRICE.toString(), paidAtNs: ns(T0 - 1_000).toString(), status: "processing", eraOwner: "kofi.testnet", activationVersion: 1, request: REQ, flags: [], createdAt: "", updatedAt: "" })
+    expect(recoverInterrupted(d)).toBe(1)
+    expect(d.store.get(tx)!.status).toBe("refund_due")
+    expect((await submit(d, tx)).http).toBe(409) // still one payment, one job
+    expect(d.calls()).toBe(0)
+  })
+})
+
+describe("refunds", () => {
+  const setup = async () => {
+    const w = new World()
+    const d = deps(w, { fail: true })
+    const a = w.pay(40, T0 - 10_000)
+    const b = w.pay(41, T0 - 9_000)
+    await submit(d, a)
+    await submit(d, b)
+    return { w, d, a, b }
+  }
+  const refund = (w: World, n: number, atMs: number, opts: Partial<Payment> = {}) =>
+    w.pay(n, atMs, { signer: RUNTIME, receiver: "alice.testnet", ...opts })
+  test("a real refund after the payment settles the job", async () => {
+    const { w, d, a } = await setup()
+    const r = await recordRefund(d, a, refund(w, 50, T0))
+    expect(r.http).toBe(200)
+    expect(d.store.get(a)!.status).toBe("refunded")
+  })
+  test("one refund tx can't settle two jobs", async () => {
+    const { w, d, a, b } = await setup()
+    const tx = refund(w, 51, T0)
+    expect((await recordRefund(d, a, tx)).http).toBe(200)
+    expect((await recordRefund(d, b, tx)).http).toBe(409)
+    expect(d.store.get(b)!.status).toBe("refund_due")
+  })
+  test("an older, unrelated transfer to the payer can't be passed off as the refund", async () => {
+    const { w, d, a } = await setup()
+    expect((await recordRefund(d, a, refund(w, 52, T0 - 60_000))).http).toBe(402)
+  })
+  test("wrong sender, wrong receiver or too little: refused", async () => {
+    const { w, d, a } = await setup()
+    expect((await recordRefund(d, a, refund(w, 53, T0, { signer: "kofi.testnet" }))).http).toBe(402)
+    expect((await recordRefund(d, a, refund(w, 54, T0, { receiver: "mallory.testnet" }))).http).toBe(402)
+    expect((await recordRefund(d, a, refund(w, 55, T0, { depositYocto: PRICE - 1n }))).http).toBe(402)
+    expect(d.store.get(a)!.status).toBe("refund_due")
+  })
+  test("a served job can't be marked refunded", async () => {
+    const w = new World()
+    const d = deps(w)
+    const a = w.pay(42, T0 - 1_000)
+    await submit(d, a)
+    expect((await recordRefund(d, a, refund(w, 56, T0))).http).toBe(409)
   })
 })

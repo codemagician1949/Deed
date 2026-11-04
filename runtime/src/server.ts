@@ -6,7 +6,7 @@
 //   GET  /v1/health      what this runtime is and whether it can answer
 import { chain } from "./chain"
 import { CONFIG, CONFIG_HASH, SERVICE } from "./config"
-import { resumeAwaiting, submitJob, type Deps, type Job } from "./jobs"
+import { recordRefund, recoverInterrupted, resumeAwaiting, submitJob, type Deps, type Job } from "./jobs"
 import { nearAi } from "./nearai"
 import { riskFlags } from "./risk"
 import { fileStore } from "./store"
@@ -14,7 +14,8 @@ import { fileStore } from "./store"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 
-if (!existsSync(CONFIG.dataFile) && CONFIG.seedJobs && existsSync(CONFIG.seedJobs)) {
+// Seed only the team's own runtime with its published ledger; another operator starts with an empty ledger.
+if (!existsSync(CONFIG.dataFile) && CONFIG.seedJobs && existsSync(CONFIG.seedJobs) && CONFIG.runtimeId === CONFIG.root) {
   mkdirSync(dirname(CONFIG.dataFile), { recursive: true })
   const snap = JSON.parse(readFileSync(CONFIG.seedJobs, "utf8")) as { jobs: Job[] }
   writeFileSync(CONFIG.dataFile, JSON.stringify(snap.jobs, null, 2))
@@ -103,12 +104,8 @@ const server = Bun.serve({
         /* fall through */
       }
       if (!/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(refundTx)) return json(400, { error: "Body must be {refund_tx}." })
-      const p = await chain.payment(refundTx, CONFIG.runtimeId).catch(() => null)
-      if (!p || !p.success) return json(402, { error: `Refund tx not found as a successful transfer from ${CONFIG.runtimeId}.` })
-      if (p.receiver !== job.payer || p.depositYocto < BigInt(job.amountYocto))
-        return json(402, { error: `Refund must send at least ${job.amountYocto} yocto to ${job.payer}.` })
-      if (deps.store.list().some((j) => j.refundTx === refundTx)) return json(409, { error: "That refund tx is already used for another job." })
-      deps.store.put({ ...job, status: "refunded", refundTx, updatedAt: new Date().toISOString() })
+      const r = await recordRefund(deps, job.id, refundTx)
+      if (r.http !== 200) return json(r.http, { error: r.error })
       return json(200, { job: deps.store.get(job.id) })
     }
     const m = url.pathname.match(/^\/v1\/jobs\/([1-9A-HJ-NP-Za-km-z]{43,44})$/)
@@ -120,5 +117,8 @@ const server = Bun.serve({
   },
 })
 
+// Jobs left mid-answer by a crash or redeploy become refund_due (nothing in flight at startup).
+const interrupted = recoverInterrupted(deps)
+if (interrupted) console.log(`moved ${interrupted} interrupted job(s) to refund_due`)
 setInterval(() => void resumeAwaiting(deps).catch(() => undefined), 60_000)
 console.log(`Preflight runtime ${CONFIG.runtimeId} on http://localhost:${server.port} (model ${SERVICE.model}, config ${CONFIG_HASH.slice(0, 12)}…, answers: ${CONFIG.nearAiKey ? "on" : "OFF: set NEARAI_API_KEY"})`)

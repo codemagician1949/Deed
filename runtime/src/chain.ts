@@ -46,6 +46,10 @@ export const chain: Chain = {
   async activation(name) {
     return view<Activation | null>(CONFIG.deed, "get_activation", { token_id: name })
   },
+  async listingSeller(name) {
+    const l = await view<{ seller: string; state: unknown } | null>(CONFIG.deed, "get_listing", { token_id: name })
+    return l && l.state === "Active" ? l.seller : null
+  },
   async payment(txHash, sender): Promise<Payment | null> {
     let r: any
     try {

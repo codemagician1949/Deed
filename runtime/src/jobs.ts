@@ -11,6 +11,7 @@
 //     once they do, refund_due after 24 h.
 //   - Inference fails => refund_due.
 //   - One payment, one job: the payment tx hash is the job id (D4).
+import { finalVerdict } from "./verdict"
 import { jobMessage, RECIPIENT, verifyNep413 } from "./nep413"
 import { riskFlags, type ProposedTx, type RiskFlag } from "./risk"
 import type { SignatureCheck } from "./tee"
@@ -39,6 +40,8 @@ export interface Chain {
   lastRotationNs(name: string): Promise<bigint>
   /** Whether publicKey ("ed25519:...") is a full-access key of account right now. */
   hasFullAccessKey(account: string, publicKey: string): Promise<boolean>
+  /** Seller of the name's active listing in the sale escrow, or null if it isn't listed. */
+  listingSeller(name: string): Promise<string | null>
 }
 export interface Answer {
   explanation: string
@@ -69,6 +72,8 @@ export interface Job {
   request: ProposedTx
   flags: RiskFlag[]
   answer?: Answer
+  /** Stricter of the model's verdict and the flags' rating (see verdict.ts). */
+  verdict?: ReturnType<typeof finalVerdict>
   reason?: string
   refundTx?: string
   createdAt: string
@@ -176,6 +181,7 @@ async function submitJobInner(d: Deps, input: JobInput): Promise<JobResult> {
       d.chain.payment(input.payment_tx, input.sender),
       d.chain.lastRotationNs(input.name),
     ])
+    owner = await servingOwner(d, input.name, owner)
   } catch (e) {
     return { http: 503, error: `Can't verify the owner or your payment right now (${e instanceof Error ? e.message : e}). Nothing was recorded; try again.` }
   }
@@ -184,6 +190,10 @@ async function submitJobInner(d: Deps, input: JobInput): Promise<JobResult> {
   if (payment.receiver !== input.name) return { http: 402, error: `That payment went to ${payment.receiver}, not ${input.name}.` }
   if (payment.signer !== input.sender) return { http: 402, error: `That payment was sent by ${payment.signer}, not ${input.sender}.` }
   if (d.now() - nsToMs(payment.timestampNs) > DAY_MS) return { http: 410, error: "That payment is older than 24 hours. Ask the operator for a refund." }
+
+  if (!(await stillSame(d, input.name, owner, activation, rotation))) {
+    return { http: 503, error: "The Deed's ownership or activation changed while your job was being checked. Nothing was recorded; submit the same payment again." }
+  }
 
   const now = new Date(d.now()).toISOString()
   const job: Job = {
@@ -216,6 +226,34 @@ async function submitJobInner(d: Deps, input: JobInput): Promise<JobResult> {
   return serve(d, job)
 }
 
+/**
+ * Who the service works for right now. While a Deed is listed, the sale escrow holds the name, but
+ * the seller still owns the business (payments made while listed reach them at the sale, invariant
+ * B3), so the seller's activation keeps serving until the name is sold or the listing is cancelled.
+ */
+async function servingOwner(d: Deps, name: string, registryOwner: string | null): Promise<string | null> {
+  if (registryOwner !== d.escrow) return registryOwner
+  return (await d.chain.listingSeller(name)) ?? registryOwner
+}
+
+/**
+ * The reads above run in parallel and may come from different blocks. Before recording any decision
+ * (serve, hold or refund), read owner, activation and last rotation again: if anything moved between
+ * the two reads, nothing is decided and the payer retries.
+ * Throws (= fail closed) on RPC trouble.
+ */
+async function stillSame(d: Deps, name: string, owner: string, activation: Activation | null, rotation: bigint): Promise<boolean> {
+  try {
+    const [o, a, r] = await Promise.all([d.chain.owner(name), d.chain.activation(name), d.chain.lastRotationNs(name)])
+    const o2 = await servingOwner(d, name, o)
+    const same = (x: Activation | null, y: Activation | null) =>
+      x === y || (!!x && !!y && x.owner === y.owner && x.version === y.version && x.runtime_id === y.runtime_id && x.config_hash === y.config_hash && x.price_yocto === y.price_yocto)
+    return o2 === owner && r === rotation && same(a, activation)
+  } catch {
+    return false
+  }
+}
+
 /** The person who owns the name right now switched on THIS runtime running THIS config. */
 function isEntitled(d: Deps, owner: string, activation: Activation | null): boolean {
   return (
@@ -236,6 +274,7 @@ async function serve(d: Deps, job: Job): Promise<JobResult> {
   } catch (e) {
     return save(d, job, "refund_due", `The AI answer failed (${e instanceof Error ? e.message : e}); the operator refunds this payment.`, 502)
   }
+  job.verdict = finalVerdict(job.answer.explanation, job.flags)
   // D1: deliver regardless; record who owns it now so a mid-job sale is visible.
   job.ownerAtDelivery = await d.chain.owner(job.name).catch(() => null)
   return save(d, job, "served", undefined, 200)
@@ -261,9 +300,11 @@ export async function resumeAwaiting(d: Deps): Promise<number> {
     let owner: string | null, activation: Activation | null, rotation: bigint
     try {
       ;[owner, activation, rotation] = await Promise.all([d.chain.owner(job.name), d.chain.activation(job.name), d.chain.lastRotationNs(job.name)])
+      owner = await servingOwner(d, job.name, owner)
     } catch {
       continue // fail closed: try again later
     }
+    if (!owner || !(await stillSame(d, job.name, owner, activation, rotation))) continue // changing under us: retry next pass
     if (BigInt(job.paidAtNs) < rotation) {
       save(d, job, "refund_due", "The Deed changed hands again before this was answered.", 200)
       changed++
@@ -281,4 +322,46 @@ export async function resumeAwaiting(d: Deps): Promise<number> {
     }
   }
   return changed
+}
+
+/**
+ * Marks a refund_due job refunded, given the operator's refund transaction. Checked on chain:
+ * a successful transfer FROM this runtime's operator account TO the payer, of at least the amount
+ * paid, made AFTER the payment (so an older, unrelated transfer can't be passed off as a refund),
+ * and not already used for another job (one refund tx settles exactly one job).
+ */
+export async function recordRefund(d: Deps, jobId: string, refundTx: string): Promise<{ http: number; error?: string; job?: Job }> {
+  const job = d.store.get(jobId)
+  if (!job) return { http: 404, error: "No job for that payment." }
+  if (job.status !== "refund_due") return { http: 409, error: `Job is ${job.status}, not refund_due.` }
+  if (d.store.list().some((j) => j.refundTx === refundTx)) return { http: 409, error: "That refund tx is already used for another job." }
+  let p: Payment | null
+  try {
+    p = await d.chain.payment(refundTx, d.runtimeId)
+  } catch (e) {
+    return { http: 503, error: `Can't read the refund tx right now (${e instanceof Error ? e.message : e}). Try again.` }
+  }
+  if (!p || !p.success || p.signer !== d.runtimeId) return { http: 402, error: `Refund tx not found as a successful transfer from ${d.runtimeId}.` }
+  if (p.receiver !== job.payer || p.depositYocto < BigInt(job.amountYocto)) return { http: 402, error: `Refund must send at least ${job.amountYocto} yocto to ${job.payer}.` }
+  if (p.timestampNs <= BigInt(job.paidAtNs)) return { http: 402, error: "That transfer happened before the payment, so it can't be its refund." }
+  // Re-check uniqueness right before writing (another request may have used it meanwhile).
+  if (d.store.list().some((j) => j.refundTx === refundTx)) return { http: 409, error: "That refund tx is already used for another job." }
+  const done: Job = { ...job, status: "refunded", refundTx, updatedAt: new Date(d.now()).toISOString() }
+  d.store.put(done)
+  return { http: 200, job: done }
+}
+
+/**
+ * Crash recovery. A job is written as "processing" before the model is called (so the payment is
+ * claimed first). If the runtime dies mid-answer, that job would stay stuck: replay protection refuses
+ * a resubmission and it never becomes refundable. On startup, every "processing" job is moved to
+ * refund_due. A payment checked but never written is simply unused: the payer can submit it again.
+ */
+export function recoverInterrupted(d: Deps): number {
+  let n = 0
+  for (const job of d.store.list().filter((j) => j.status === "processing")) {
+    save(d, job, "refund_due", "The runtime restarted while answering; the operator refunds this payment.", 200)
+    n++
+  }
+  return n
 }
