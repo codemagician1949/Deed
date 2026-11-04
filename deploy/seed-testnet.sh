@@ -9,7 +9,7 @@ NET="network-config testnet"; S="sign-with-legacy-keychain send"
 RPC=${RPC:-https://rpc.testnet.fastnear.com}
 TLA=deedbot.$ROOT; DEED=deed.$ROOT; REGISTRY=registry.$ROOT
 SELLER=kofi.$ROOT; BUYER=maya.$ROOT; LABEL=${LABEL:-preflight}; NAME=$LABEL.$TLA
-CONFIG_HASH=${CONFIG_HASH:-8c5e8df1eb3fe3269550cd6a982b40991bbc7288303dd5a66cd90448f9e0f064}  # sha256 of runtime/preflight.config.json
+CONFIG_HASH=${CONFIG_HASH:-678ff1f485b71771a96ae1eb93f268e674e3704c2340b15d64a43add83122d95}  # sha256 of runtime/preflight.config.json
 
 q() { for _ in 1 2 3 4 5 6; do out=$(curl -s "$RPC" -H 'content-type: application/json' -d "$1"); echo "$out" | grep -q '"result"' && { echo "$out"; return; }; sleep 3; done; echo "$out"; }
 view() { q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"call_function\",\"finality\":\"final\",\"account_id\":\"$1\",\"method_name\":\"$2\",\"args_base64\":\"$(printf '%s' "$3" | base64)\"}}" \

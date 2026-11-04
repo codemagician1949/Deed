@@ -42,5 +42,6 @@ export const SERVICE = JSON.parse(configBytes.toString("utf8")) as {
   system_prompt: string
   max_tokens: number
   temperature: number
+  reasoning_effort?: string
 }
 export const CONFIG_HASH = createHash("sha256").update(configBytes).digest("hex")

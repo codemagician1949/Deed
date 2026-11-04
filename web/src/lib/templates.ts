@@ -8,6 +8,13 @@ export interface Template {
 
 // Keys are sha256 of runtime/preflight.config.json (the runtime serves only this exact hash).
 const KNOWN: Record<string, Template> = {
+  "678ff1f485b71771a96ae1eb93f268e674e3704c2340b15d64a43add83122d95": {
+    title: "Preflight",
+    tagline: "Explains a NEAR transaction in plain words and flags anything risky, before you sign it.",
+    model: "z-ai/glm-5.3-flash on NEAR AI (TEE-signed answers)",
+  },
+  // Config v1 (activation v3): same prompt and model, without reasoning_effort; the model often spent
+  // its whole token budget reasoning and returned an empty answer.
   "8c5e8df1eb3fe3269550cd6a982b40991bbc7288303dd5a66cd90448f9e0f064": {
     title: "Preflight",
     tagline: "Explains a NEAR transaction in plain words and flags anything risky, before you sign it.",
@@ -21,7 +28,7 @@ const KNOWN: Record<string, Template> = {
   },
 }
 
-export const PREFLIGHT_CONFIG_HASH = "8c5e8df1eb3fe3269550cd6a982b40991bbc7288303dd5a66cd90448f9e0f064"
+export const PREFLIGHT_CONFIG_HASH = "678ff1f485b71771a96ae1eb93f268e674e3704c2340b15d64a43add83122d95"
 
 export function templateFor(hash: string | null): Template {
   if (hash && KNOWN[hash]) return KNOWN[hash]

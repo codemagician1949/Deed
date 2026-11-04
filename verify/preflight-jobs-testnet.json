@@ -1,7 +1,185 @@
 {
   "note": "Snapshot of the Preflight runtime's job ledger on NEAR testnet (runtime/data/jobs.json). Every job links to its payment tx; refunds to their refund tx.",
-  "taken_at": "2026-11-03T11:01:54.256241Z",
+  "taken_at": "2026-11-04T02:09:49.221591Z",
   "jobs": [
+    {
+      "id": "EyjvceKVkmDfLLqhAgYmeoZCix1NfhaYrAFWgPdWQ83C",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793758129978416402",
+      "status": "served",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 4,
+      "request": {
+        "receiver_id": "friend.testnet",
+        "actions": [
+          {
+            "type": "Transfer",
+            "params": {
+              "deposit": "5000000000000000000000000"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "value",
+          "severity": "info",
+          "message": "Sends 5 NEAR in total."
+        }
+      ],
+      "createdAt": "2026-11-04T02:08:58.668Z",
+      "updatedAt": "2026-11-04T02:09:01.089Z",
+      "answer": {
+        "explanation": "This transaction sends 5 NEAR from your wallet to friend.testnet. It's a simple direct transfer \u2014 no contracts are involved and no other permissions are granted. Double-check that \"friend.testnet\" is exactly the account you intend, since transfers can't be reversed once confirmed. If you know and trust this recipient, you're good to go.\n\nVerdict: SAFE TO SIGN",
+        "model": "z-ai/glm-5.3-flash",
+        "chatId": "e3239085aaef42aeae778a46e79f1d61",
+        "requestBody": "{\"model\":\"z-ai/glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Preflight, a careful assistant that explains a NEAR blockchain transaction to the person about to sign it.\\nWrite for someone who is not technical. In 3 to 6 short sentences: say what the transaction does, who receives what,\\nand what could go wrong. You are given risk flags computed by deterministic code: mention every \\\"high\\\" flag and never\\ncontradict a flag. Do not invent facts that are not in the transaction. End with exactly one line:\\n\\\"Verdict: SAFE TO SIGN\\\", \\\"Verdict: CHECK FIRST\\\" or \\\"Verdict: DO NOT SIGN\\\".\"},{\"role\":\"user\",\"content\":\"{\\\"transaction\\\":{\\\"receiver_id\\\":\\\"friend.testnet\\\",\\\"actions\\\":[{\\\"type\\\":\\\"Transfer\\\",\\\"params\\\":{\\\"deposit\\\":\\\"5000000000000000000000000\\\"}}]},\\\"risk_flags\\\":[{\\\"code\\\":\\\"value\\\",\\\"severity\\\":\\\"info\\\",\\\"message\\\":\\\"Sends 5 NEAR in total.\\\"}]}\"}],\"max_tokens\":700,\"temperature\":0.2,\"reasoning_effort\":\"low\"}",
+        "responseBody": "{\"id\":\"e3239085aaef42aeae778a46e79f1d61\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"This transaction sends 5 NEAR from your wallet to friend.testnet. It's a simple direct transfer \u2014 no contracts are involved and no other permissions are granted. Double-check that \\\"friend.testnet\\\" is exactly the account you intend, since transfers can't be reversed once confirmed. If you know and trust this recipient, you're good to go.\\n\\nVerdict: SAFE TO SIGN\"},\"finish_reason\":\"stop\",\"logprobs\":null,\"matched_stop\":154827}],\"model\":\"z-ai/glm-5.3-flash\",\"created\":1793758138,\"usage\":{\"prompt_tokens\":191,\"total_tokens\":270,\"completion_tokens\":79,\"prompt_tokens_details\":null,\"reasoning_tokens\":1,\"completion_tokens_details\":{\"reasoning_tokens\":1}}}",
+        "signature": {
+          "text": "z-ai/glm-5.3-flash:728621bff9d7a3951e8b0bfcf28d1f6009b0cb5fcc2c43a7026f69347a23b79d:fba189402070d2fd27eba4cbc8ab773e85f478cb229a80772fd80bef9f32090e",
+          "signature": "0x50b34d96d6204a5af1609714ea89110724d45fdf77bc6c664352570931bef8143ce90536f9b75d6079ac7258d1a6e78378fbbbed94a712dc043ab1420569463c1b",
+          "signing_address": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signing_algo": "ecdsa",
+          "signature_kind": "provider_tee"
+        },
+        "check": {
+          "hashesMatch": true,
+          "recovered": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signerMatches": true,
+          "attested": true
+        }
+      },
+      "ownerAtDelivery": "kofi.deedhq.testnet"
+    },
+    {
+      "id": "A4CPng3SwYX9cipCtFHKnYskDMh6cm2mtaGHc24goygU",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793758106942145332",
+      "status": "served",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 4,
+      "request": {
+        "receiver_id": "usdc.fakes.testnet",
+        "actions": [
+          {
+            "type": "FunctionCall",
+            "params": {
+              "methodName": "ft_approve",
+              "args": {
+                "spender_id": "dex-promo.testnet",
+                "amount": "340282366920938463463374607431768211455"
+              },
+              "gas": "30000000000000",
+              "deposit": "1"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "unlimited_approval",
+          "severity": "high",
+          "message": "Calls ft_approve with an unlimited amount: dex-promo.testnet could move all of that token."
+        }
+      ],
+      "createdAt": "2026-11-04T02:08:35.958Z",
+      "updatedAt": "2026-11-04T02:08:43.289Z",
+      "answer": {
+        "explanation": "This transaction approves an account named dex-promo.testnet to spend your USDC tokens on your behalf \u2014 and it's set to an unlimited amount, meaning they could move your entire balance at any time. The approval is sent to a contract called usdc.fakes.testnet, which appears to be a testnet token. The main risk: once approved, dex-promo.testnet can drain all your tokens without asking you again, and this approval doesn't expire on its own. Since unlimited approvals to unknown spenders are a common way people lose funds, you should verify you fully trust this spender before continuing.\n\nVerdict: DO NOT SIGN",
+        "model": "z-ai/glm-5.3-flash",
+        "chatId": "4b9f644a0cd74336b2ffe221f71d0fc3",
+        "requestBody": "{\"model\":\"z-ai/glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are Preflight, a careful assistant that explains a NEAR blockchain transaction to the person about to sign it.\\nWrite for someone who is not technical. In 3 to 6 short sentences: say what the transaction does, who receives what,\\nand what could go wrong. You are given risk flags computed by deterministic code: mention every \\\"high\\\" flag and never\\ncontradict a flag. Do not invent facts that are not in the transaction. End with exactly one line:\\n\\\"Verdict: SAFE TO SIGN\\\", \\\"Verdict: CHECK FIRST\\\" or \\\"Verdict: DO NOT SIGN\\\".\"},{\"role\":\"user\",\"content\":\"{\\\"transaction\\\":{\\\"receiver_id\\\":\\\"usdc.fakes.testnet\\\",\\\"actions\\\":[{\\\"type\\\":\\\"FunctionCall\\\",\\\"params\\\":{\\\"methodName\\\":\\\"ft_approve\\\",\\\"args\\\":{\\\"spender_id\\\":\\\"dex-promo.testnet\\\",\\\"amount\\\":\\\"340282366920938463463374607431768211455\\\"},\\\"gas\\\":\\\"30000000000000\\\",\\\"deposit\\\":\\\"1\\\"}}]},\\\"risk_flags\\\":[{\\\"code\\\":\\\"unlimited_approval\\\",\\\"severity\\\":\\\"high\\\",\\\"message\\\":\\\"Calls ft_approve with an unlimited amount: dex-promo.testnet could move all of that token.\\\"}]}\"}],\"max_tokens\":700,\"temperature\":0.2,\"reasoning_effort\":\"low\"}",
+        "responseBody": "{\"id\":\"4b9f644a0cd74336b2ffe221f71d0fc3\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"This transaction approves an account named dex-promo.testnet to spend your USDC tokens on your behalf \u2014 and it's set to an unlimited amount, meaning they could move your entire balance at any time. The approval is sent to a contract called usdc.fakes.testnet, which appears to be a testnet token. The main risk: once approved, dex-promo.testnet can drain all your tokens without asking you again, and this approval doesn't expire on its own. Since unlimited approvals to unknown spenders are a common way people lose funds, you should verify you fully trust this spender before continuing.\\n\\nVerdict: DO NOT SIGN\"},\"finish_reason\":\"stop\",\"logprobs\":null,\"matched_stop\":154827}],\"model\":\"z-ai/glm-5.3-flash\",\"created\":1793758116,\"usage\":{\"prompt_tokens\":253,\"total_tokens\":384,\"completion_tokens\":131,\"prompt_tokens_details\":null,\"reasoning_tokens\":1,\"completion_tokens_details\":{\"reasoning_tokens\":1}}}",
+        "signature": {
+          "text": "z-ai/glm-5.3-flash:3a7e444515cf34b25845d87576cbfca8c62a4dd8f467b5f8141a621a1fd0b339:0b44f348fdd97d10d754b4d771065eefe8b170af0451474e0906a3a82ce83861",
+          "signature": "0x15e21471ab2bfed63f5f9febd32b3823a230ac819453ba868c1b1871ebcc36882089c4a1eb898159f39bde6abd039b1dfcfd05098fa98d5b43f2b65e20de8bf61b",
+          "signing_address": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signing_algo": "ecdsa",
+          "signature_kind": "provider_tee"
+        },
+        "check": {
+          "hashesMatch": true,
+          "recovered": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "signerMatches": true,
+          "attested": true
+        }
+      },
+      "ownerAtDelivery": "kofi.deedhq.testnet"
+    },
+    {
+      "id": "DzFD3uud4t8EnTUc8NoAcDbdHJvdVW1Ep6RY19G4dQad",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793745437865908249",
+      "status": "refunded",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 3,
+      "request": {
+        "receiver_id": "usdc.fakes.testnet",
+        "actions": [
+          {
+            "type": "FunctionCall",
+            "params": {
+              "methodName": "ft_approve",
+              "args": {
+                "spender_id": "dex-promo.testnet",
+                "amount": "340282366920938463463374607431768211455"
+              },
+              "gas": "30000000000000",
+              "deposit": "1"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "unlimited_approval",
+          "severity": "high",
+          "message": "Calls ft_approve with an unlimited amount: dex-promo.testnet could move all of that token."
+        }
+      ],
+      "createdAt": "2026-11-03T22:37:28.857Z",
+      "updatedAt": "2026-11-04T02:09:20.827Z",
+      "reason": "The AI answer failed (empty answer from the model); the operator refunds this payment.",
+      "refundTx": "6btr87zRYxyuhW3Av769fNCrqkVXSasM5Hs9PHR5qXJy"
+    },
+    {
+      "id": "69KpRbgyeb2xCxPNtasun2k6diykwKinHoM4JW7L5qFb",
+      "name": "preflight.deedbot.deedhq.testnet",
+      "payer": "maya.deedhq.testnet",
+      "amountYocto": "50000000000000000000000",
+      "paidAtNs": "1793720415764123206",
+      "status": "refunded",
+      "eraOwner": "kofi.deedhq.testnet",
+      "activationVersion": 3,
+      "request": {
+        "receiver_id": "friend.testnet",
+        "actions": [
+          {
+            "type": "Transfer",
+            "params": {
+              "deposit": "5000000000000000000000000"
+            }
+          }
+        ]
+      },
+      "flags": [
+        {
+          "code": "value",
+          "severity": "info",
+          "message": "Sends 5 NEAR in total."
+        }
+      ],
+      "createdAt": "2026-11-03T15:40:24.366Z",
+      "updatedAt": "2026-11-03T15:40:52.426Z",
+      "reason": "The AI answer failed (NEAR AI HTTP 402: {\"error\":{\"message\":\"API key spend limit exceeded. Spent: $10.12964946, Limit: $10.00\",\"type\":\"api_key_limit_exceeded\",\"param\":null,\"code\":null}}); the operator refunds this payment.",
+      "refundTx": "ActcQwEt56T1txjwYybtHJt9Bn5M9jddJX8aNV5wi5nQ"
+    },
     {
       "id": "CNffZWAFngGdasRtVULuWAa8pa9N1xJjVK8xKzYTvYu6",
       "name": "preflight.deedbot.deedhq.testnet",

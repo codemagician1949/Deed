@@ -16,7 +16,7 @@ S_SHORT=${SELLER%%.*}; AGENT=$S_SHORT-agent.$ROOT; PARTNER=$S_SHORT-partner.$ROO
 LABEL=${LABEL:-preflight}; NAME=$LABEL.$TLA
 PRICE_YOCTO=${PRICE_YOCTO:-1000000000000000000000000}   # 1 NEAR
 EARN=${EARN:-0.1 NEAR}
-CONFIG_HASH=${CONFIG_HASH:-8c5e8df1eb3fe3269550cd6a982b40991bbc7288303dd5a66cd90448f9e0f064}  # sha256 of runtime/preflight.config.json
+CONFIG_HASH=${CONFIG_HASH:-678ff1f485b71771a96ae1eb93f268e674e3704c2340b15d64a43add83122d95}  # sha256 of runtime/preflight.config.json
 REPORT=verify/report-testnet.json
 LINES=$(mktemp)
 FAILS=0

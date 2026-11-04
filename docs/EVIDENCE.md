@@ -46,6 +46,12 @@ Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by t
 | [`G9CCLRZP…`](https://testnet.nearblocks.io/txns/G9CCLRZPtasZUVK1f2hdrhdMhK4A8b6uMCn2jzU7dQ5G) | full_access_key | v3 under `kofi.deedhq.testnet` | refunded ([`FQeA19mC…`](https://testnet.nearblocks.io/txns/FQeA19mCU87x9GLxXxyRturT8sGLJDTm64ZHnMdkiYrM)): no API key yet | — |
 | [`ELo6ZUbG…`](https://testnet.nearblocks.io/txns/ELo6ZUbGs9QejdnCiyWqVtd6XJfMh557ziWXxM8ZRYtm) | unlimited_approval | v3 under `kofi.deedhq.testnet` | answered: **DO NOT SIGN** | hashes ✓ · signer ✓ |
 | [`CNffZWAF…`](https://testnet.nearblocks.io/txns/CNffZWAFngGdasRtVULuWAa8pa9N1xJjVK8xKzYTvYu6) | full_access_key | v3 under `kofi.deedhq.testnet` | answered: **CHECK FIRST** | hashes ✓ · signer ✓ · attested ✓ |
+| [`69KpRbgy…`](https://testnet.nearblocks.io/txns/69KpRbgyeb2xCxPNtasun2k6diykwKinHoM4JW7L5qFb) | — | v3 under `kofi.deedhq.testnet` | refunded ([`ActcQwEt…`](https://testnet.nearblocks.io/txns/ActcQwEt56T1txjwYybtHJt9Bn5M9jddJX8aNV5wi5nQ)): NEAR AI key over its spend limit | — |
+| [`DzFD3uud…`](https://testnet.nearblocks.io/txns/DzFD3uud4t8EnTUc8NoAcDbdHJvdVW1Ep6RY19G4dQad) | unlimited_approval | v3 under `kofi.deedhq.testnet` | refunded ([`6btr87zR…`](https://testnet.nearblocks.io/txns/6btr87zRYxyuhW3Av769fNCrqkVXSasM5Hs9PHR5qXJy)): empty answer (the model spent its token budget reasoning) → fixed in config v2 | — |
+| [`A4CPng3S…`](https://testnet.nearblocks.io/txns/A4CPng3SwYX9cipCtFHKnYskDMh6cm2mtaGHc24goygU) | unlimited_approval | v4 under `kofi.deedhq.testnet` | answered: **DO NOT SIGN** | hashes ✓ · signer ✓ · attested ✓ |
+| [`EyjvceKV…`](https://testnet.nearblocks.io/txns/EyjvceKVkmDfLLqhAgYmeoZCix1NfhaYrAFWgPdWQ83C) | — (plain 5 NEAR transfer) | v4 under `kofi.deedhq.testnet` | answered: **SAFE TO SIGN** | hashes ✓ · signer ✓ · attested ✓ |
+
+**Config v2 / activation v4** ([activation tx [`FSt8KMdb…`](https://testnet.nearblocks.io/txns/FSt8KMdbwassMUz8NSAfZzpykBpQSZ7txRpJAgEK4T1Y)]): `z-ai/glm-5.3-flash` is a reasoning model and sometimes spent all 700 tokens thinking, returning no answer (job `DzFD3uud…`, refunded). The fix, `"reasoning_effort": "low"`, went into [runtime/preflight.config.json](../runtime/preflight.config.json), so the config fingerprint changed (`8c5e8df1…` → `678ff1f4…`) and the owner re-activated the Deed as v4 naming the new fingerprint. The runtime then refused v3 and served only v4: a change to how the service answers is visible on chain, not a silent server edit.
 
 ---
 

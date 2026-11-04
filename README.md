@@ -166,7 +166,7 @@ cd runtime && bun install && bun test     # 26 tests: sale mid-job, payer auth, 
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
 curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
 ```
-**You will see** `26 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 8c5e8df1…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 3). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
+**You will see** `26 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 678ff1f4…`, the sha256 of [runtime/preflight.config.json](runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 4). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
 
 ### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
@@ -314,7 +314,7 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 **Verifiable answers** ([src/nearai.ts](runtime/src/nearai.ts), [src/tee.ts](runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer, then checks that signer is listed in NEAR AI's attestation report for the model (`/v1/attestation/report`, Intel TDX + NVIDIA evidence; cached 10 min). All three checks are stored with the job and shown on the page. **Trust boundary:** this proves signed inference by a provider-reported enclave key. We don't independently verify the TDX/NVIDIA quote chain, and the runtime's own logic (owner checks, ledger, refunds) runs on an ordinary server, not in a TEE. An authentic answer isn't necessarily a correct one.
 
-**Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`8c5e8df1…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
+**Config fingerprint**: the system prompt, model and limits live in [runtime/preflight.config.json](runtime/preflight.config.json); its sha256 (`678ff1f4…`) is what the owner signs at activation, and the runtime refuses activations naming any other config. Nothing secret: a seller can't keep a "secret recipe".
 
 **How good are the flags?** [runtime/eval/RESULTS.md](runtime/eval/RESULTS.md): 24 labelled transactions (safe / check / danger), `bun run eval`. The first run found real bugs (1 dangerous miss, 2 false alarms) that are fixed; the current 22/24 is optimistic because it's the same set the fixes were made on. An independent held-out set is still to do.
 

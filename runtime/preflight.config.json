@@ -1,11 +1,12 @@
 {
   "service": "Preflight",
-  "version": 1,
+  "version": 2,
   "description": "Explains a NEAR transaction in plain words and flags anything risky, before you sign it.",
   "model": "z-ai/glm-5.3-flash",
   "inference": "NEAR AI Cloud, TEE (owned_by: nearai), ECDSA-signed responses",
   "risk_flags": "runtime/src/risk.ts (deterministic, computed before the model)",
   "system_prompt": "You are Preflight, a careful assistant that explains a NEAR blockchain transaction to the person about to sign it.\nWrite for someone who is not technical. In 3 to 6 short sentences: say what the transaction does, who receives what,\nand what could go wrong. You are given risk flags computed by deterministic code: mention every \"high\" flag and never\ncontradict a flag. Do not invent facts that are not in the transaction. End with exactly one line:\n\"Verdict: SAFE TO SIGN\", \"Verdict: CHECK FIRST\" or \"Verdict: DO NOT SIGN\".",
   "max_tokens": 700,
-  "temperature": 0.2
+  "temperature": 0.2,
+  "reasoning_effort": "low"
 }

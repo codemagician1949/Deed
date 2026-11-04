@@ -39,6 +39,7 @@ export const nearAi: Inference = {
       ],
       max_tokens: SERVICE.max_tokens,
       temperature: SERVICE.temperature,
+      ...(SERVICE.reasoning_effort ? { reasoning_effort: SERVICE.reasoning_effort } : {}),
     })
     const res = await fetch(`${CONFIG.nearAiBase}/chat/completions`, {
       method: "POST",
