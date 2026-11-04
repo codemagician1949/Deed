@@ -91,7 +91,7 @@ After a sale:
 | Preflight runtime: paid jobs, payer signatures, per-job owner check, NEAR AI verifiable inference with the enclave signature checked, refunds | **Live** (Railway); answered and refunded jobs on testnet |
 | Web app on live chain data: title page with full history, proof page, market, owner console, Try Preflight | **Live** (Vercel) |
 | Wallet actions in the browser (buy, list, cancel, release payment, activate, pay and sign a job) | **Built**; the live sales and jobs so far were signed from the CLI, not yet by an outside person in a browser |
-| A buyer running their own runtime | **Supported, not yet demonstrated** by someone outside the team ([runbook](docs/HANDOVER.md)) |
+| A buyer running their own runtime | **Supported, not yet demonstrated** by someone outside the team ([runbook](docs/BUYER-RUNBOOK.md)) |
 | Risk-flag accuracy | 22/24 on the team's own set, which the fixes were tuned on, so optimistic ([results](runtime/eval/RESULTS.md)). A held-out harness that refuses to run until an outsider's labels are frozen in git is ready ([how](runtime/eval/HELDOUT.md)); the set itself isn't written yet |
 | Model verdicts | The model once answered a full-access-key request (flagged high) with "CHECK FIRST". The final verdict is now the stricter of the model's and the flags', applied in code next to the unchanged signed text |
 
@@ -124,4 +124,4 @@ ERC-6551 gives each NFT a separate account whose control follows the token; on N
 
 ## Documents
 
-[THREAT_MODEL.md](THREAT_MODEL.md) · [docs/INVARIANTS.md](docs/INVARIANTS.md) · [docs/EVIDENCE.md](docs/EVIDENCE.md) (live sale, live jobs, testing strategy, bugs found) · [docs/REFERENCE.md](docs/REFERENCE.md) (run it, call-by-call, APIs) · [docs/CLIENTS.md](docs/CLIENTS.md) · [docs/HANDOVER.md](docs/HANDOVER.md) · [docs/SPIKE.md](docs/SPIKE.md) · [docs/RESEARCH.md](docs/RESEARCH.md)
+[THREAT_MODEL.md](THREAT_MODEL.md) · [docs/INVARIANTS.md](docs/INVARIANTS.md) · [docs/EVIDENCE.md](docs/EVIDENCE.md) (live sale, live jobs, testing strategy, bugs found) · [docs/REFERENCE.md](docs/REFERENCE.md) (run it, call-by-call, APIs) · [docs/CLIENTS.md](docs/CLIENTS.md) · [docs/BUYER-RUNBOOK.md](docs/BUYER-RUNBOOK.md) · [docs/SPIKE.md](docs/SPIKE.md) · [docs/RESEARCH.md](docs/RESEARCH.md)

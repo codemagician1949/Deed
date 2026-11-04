@@ -196,7 +196,7 @@ function OwnedDeed({ deed, onDone }: { deed: LiveDeed; onDone: () => void }) {
               <summary className="cursor-pointer">Run it on your own runtime</summary>
               <p className="mt-2">
                 Which runtime serves this name. Keep <span className="font-mono">{CONFIG.root}</span> (the hosted one), or put the account id of a runtime you run
-                yourself (<a className="underline" href="https://github.com/codemagician1949/Deed/blob/main/docs/HANDOVER.md" target="_blank" rel="noreferrer">how</a>). Only the runtime you name here may serve it.
+                yourself (<a className="underline" href="https://github.com/codemagician1949/Deed/blob/main/docs/BUYER-RUNBOOK.md" target="_blank" rel="noreferrer">how</a>). Only the runtime you name here may serve it.
               </p>
               <Input value={runtimeId} onChange={(e) => setRuntimeId(e.target.value)} className="mt-2 h-8 rounded-full font-mono text-xs" aria-label="Runtime account id" />
             </details>

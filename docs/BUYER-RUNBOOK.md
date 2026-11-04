@@ -1,4 +1,4 @@
-# Independent handover: runbook
+# Independent buyer: runbook
 
 The test this proves: **someone outside the team** buys a Deed with their own wallet, runs Preflight on their own server with their own NEAR AI key, switches the Deed onto it, and a customer is served by the new runtime, while the old (team) runtime stops being the authorised one. Everything is on NEAR testnet; nothing costs real money.
 
