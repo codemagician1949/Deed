@@ -37,7 +37,7 @@ Track fit 9–9.8 (it is the `nfts` prompt elevated to agents); NEAR-only depth 
 | v1 | 7.8 | 8.0 | 6.7 | 6.5 | 7.25 |
 | v2 | 7.7 | 8.3 | 7.2 | 6.5 | 7.42 |
 | **v3** | **8.3** | 8.2 | **7.8** | 6.5 | **7.70** |
-Still #1 of 13 entries, now clearly ahead (next: QLOCK 7.28). Critiques in `docs/review/deed-r3-*`.
+Still #1 of 13 entries, now clearly ahead (next: QLOCK 7.28). Critiques in `docs/process/review/deed-r3-*`.
 
 ### What still costs points (fix these to pass 8.5)
 1. **Escrow is not atomic.** NEAR receipts don't roll back; seller→escrow and escrow→buyer are two rotations, each revertible for 5 min; on escrow→buyer the sweep pays the *escrow*, not the seller. → Design the sale as an explicit state machine with every failure branch (payment accepted/transfer fails; transfer ok/payout fails; callback out of gas; revert after payout; retries), hold the seller's payment until the revert window closes, forward listing-period earnings to the seller, and test each branch. Or, if the day-1 spike shows a simpler path, sell via the official marketplace and document it.

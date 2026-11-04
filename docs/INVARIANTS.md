@@ -46,5 +46,10 @@ Legend for **Proven on**:
 | D2 | Served only if current owner = activation owner, activation names this runtime and this config | runtime `isEntitled` | Unit; Testnet (jobs accepted under the current activation only: v3, then v4 after the config change) | — |
 | D1 | Sold mid-job: delivered once, both owners recorded; paid before a sale → refund | runtime `submitJob` / `serve` | Unit | Not reproduced live (needs a sale timed inside an inference call) |
 | D5 | RPC trouble → refuse, record nothing | runtime | Unit | — |
+| D7 | Ownership/activation changing between reads → refuse, record nothing | runtime `stillSame` re-read | Unit | Two reads narrow the race, they don't remove it: a change after the second read is handled like a sale mid-job (D1) |
+| D8 | One refund tx settles one job; only a transfer from the operator to the payer, after the payment, counts | runtime `recordRefund` | Unit | — |
+| D9 | A crash mid-answer leaves the job refundable, never stuck | runtime `recoverInterrupted` at startup | Unit | — |
+| — | The verdict shown is never milder than the deterministic flags (a high flag → DO NOT SIGN) | runtime `verdict.ts`, web job card | Unit | The model's signed text can still say something milder; the raise is shown next to it |
+| — | Listed Deed keeps serving the seller | runtime `servingOwner` (active listing's seller) | Unit | — |
 | — | Answer bytes signed by the attested enclave | runtime `nearai.ts`, `tee.ts` | Testnet (4 answered jobs; hashes + signer ✓, attested ✓ on the last 3) | Signed inference + **provider-reported** attestation. We don't independently verify the Intel TDX/NVIDIA quote chain, and the runtime's own logic (owner checks, ledger) runs outside any TEE. |
 | — | Refunds are real and verified | runtime `refunds.ts` + `/v1/jobs/:id/refund` checks the tx on chain | Testnet (4 refunds) | An off-chain obligation of the operator who ran the job |

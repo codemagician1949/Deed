@@ -51,13 +51,15 @@ Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by t
 | [`A4CPng3S…`](https://testnet.nearblocks.io/txns/A4CPng3SwYX9cipCtFHKnYskDMh6cm2mtaGHc24goygU) | unlimited_approval | v4 under `kofi.deedhq.testnet` | answered: **DO NOT SIGN** | hashes ✓ · signer ✓ · attested ✓ |
 | [`EyjvceKV…`](https://testnet.nearblocks.io/txns/EyjvceKVkmDfLLqhAgYmeoZCix1NfhaYrAFWgPdWQ83C) | — (plain 5 NEAR transfer) | v4 under `kofi.deedhq.testnet` | answered: **SAFE TO SIGN** | hashes ✓ · signer ✓ · attested ✓ |
 
+**Verdict floor (2026-11-04):** job `CNffZWAF…` asked about adding a full-access key (flagged high) and the model answered **CHECK FIRST**; a held-out dry run reproduced it. The runtime and the Deed page now show the stricter of the model's verdict and the flags' rating (here DO NOT SIGN), marked as raised, without altering the signed text.
+
 **Config v2 / activation v4** ([activation tx [`FSt8KMdb…`](https://testnet.nearblocks.io/txns/FSt8KMdbwassMUz8NSAfZzpykBpQSZ7txRpJAgEK4T1Y)]): `z-ai/glm-5.3-flash` is a reasoning model and sometimes spent all 700 tokens thinking, returning no answer (job `DzFD3uud…`, refunded). The fix, `"reasoning_effort": "low"`, went into [runtime/preflight.config.json](../runtime/preflight.config.json), so the config fingerprint changed (`8c5e8df1…` → `678ff1f4…`) and the owner re-activated the Deed as v4 naming the new fingerprint. The runtime then refused v3 and served only v4: a change to how the service answers is visible on chain, not a silent server edit.
 
 ---
 
 ## Testing strategy
 
-Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 26 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
+Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 39 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
 
 1. **Mock registry** ([escrow.rs](../contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, a name reverted to the escrow, FT-blocked listing).
 2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](../contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](../deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.
