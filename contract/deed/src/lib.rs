@@ -13,8 +13,13 @@
 //!    the escrow already cleared the seller's grants and swept NEAR to the seller. `buy` (and
 //!    `cancel`) first point payout back at the seller, then move the name, so anything paid in
 //!    while listed is swept to the seller by that rotation (B3). `buy` pays the exact price and
-//!    refunds the buyer if the transfer fails (C1). Seller proceeds unlock after a 5-min window (C5),
-//!    kept as insurance: on the deployed House of Stake code a completed transfer can't be undone.
+//!    refunds the buyer if the transfer fails (C1). The seller and the royalty are paid in the same
+//!    callback that confirms the transfer (v3; earlier versions held proceeds for a 5-minute window).
+//! 3. **Job escrow** (v3): a customer pays `pay_job` and the contract holds the payment, bound to the
+//!    current activation and to sha256 of the request. Only the runtime the activation names can
+//!    `settle_job`; the contract re-reads the owner and pays the name's own wallet, or refunds the
+//!    customer if the name changed hands. The runtime can `refund_job` at any time, and anyone can after
+//!    `job_timeout_ns`, so a refund never depends on the operator.
 //!
 //!    `nft_on_transfer` only records state: the registry gives it a fixed 25 Tgas, too little
 //!    for any cross-contract work (a failed receiver call makes the registry return the name).
@@ -29,8 +34,13 @@ use near_sdk::{
 };
 
 pub const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
-/// hos-wallet `REVERT_WINDOW_NS` (lib.rs L51 @ d85860a).
+/// hos-wallet `REVERT_WINDOW_NS` (lib.rs L51 @ d85860a). Used by v2 sales only.
+#[allow(dead_code)]
 pub const DEFAULT_REVERT_WINDOW_NS: u64 = 5 * 60 * 1_000_000_000;
+/// A pending job can be refunded by anyone after this long (15 min).
+pub const DEFAULT_JOB_TIMEOUT_NS: u64 = 15 * 60 * 1_000_000_000;
+/// Longest runtime URL accepted in an activation.
+pub const MAX_RUNTIME_URL_LEN: usize = 200;
 /// Hard cap on the resale royalty: 10%.
 pub const MAX_ROYALTY_BPS: u16 = 1_000;
 
@@ -39,6 +49,8 @@ const GAS_TRANSFER: Gas = Gas::from_tgas(120);
 /// registry.set_payout_account → ext.set_payout → wallet (registry reserves 30 Tgas for its leg).
 const GAS_SET_PAYOUT: Gas = Gas::from_tgas(50);
 const GAS_CALLBACK: Gas = Gas::from_tgas(20);
+/// The callback that checks the payout re-point, then starts the transfer and its own callback.
+const GAS_AFTER_PAYOUT: Gas = Gas::from_tgas(150);
 /// What `buy`/`cancel` need attached: the registry transfer chain + our callback + margin.
 pub const GAS_REQUIRED_FOR_TRANSFER: Gas = Gas::from_tgas(200);
 
@@ -69,6 +81,9 @@ enum Key {
     Listings,
     Sales,
     LatestSale,
+    Jobs,
+    RuntimeUrls,
+    MaxVersions,
 }
 
 #[near(serializers = [borsh, json])]
@@ -85,6 +100,51 @@ pub struct Activation {
     /// Contract-wide unique, so an activation can never be confused with an older one.
     pub nonce: U64,
     pub activated_at_ns: U64,
+}
+
+/// What `get_activation` returns: the stored activation plus the runtime's public URL, if the owner
+/// named one. A client pays only through that URL and checks the runtime reports the same id and config.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActivationView {
+    pub owner: AccountId,
+    pub runtime_id: AccountId,
+    pub runtime_url: Option<String>,
+    pub config_hash: String,
+    pub price_yocto: U128,
+    pub version: u32,
+    pub nonce: U64,
+    pub activated_at_ns: U64,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub enum JobState {
+    /// Payment held by this contract.
+    Pending,
+    /// A settle is reading the registry.
+    Settling,
+    /// Paid to the name's wallet; `answer_hash` = sha256 of the response bytes the runtime delivered.
+    Settled { answer_hash: String },
+    /// Returned to the payer.
+    Refunded { reason: String },
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Job {
+    pub id: U64,
+    pub token_id: String,
+    pub payer: AccountId,
+    pub amount_yocto: U128,
+    /// The runtime and activation the payment was made under; only that runtime can settle it.
+    pub runtime_id: AccountId,
+    pub activation_version: u32,
+    pub activation_owner: AccountId,
+    /// sha256 (hex) of the exact request bytes the payer will send to the runtime.
+    pub request_hash: String,
+    pub paid_at_ns: U64,
+    pub state: JobState,
 }
 
 #[near(serializers = [borsh, json])]
@@ -156,6 +216,34 @@ pub struct Deed {
     sales: LookupMap<u64, Sale>,
     /// token_id → id of its newest sale (used to block relisting while a sale is unclaimed).
     latest_sale: LookupMap<String, u64>,
+    // ---- v3 ----
+    job_timeout_ns: u64,
+    next_job_id: u64,
+    jobs: LookupMap<u64, Job>,
+    /// token_id → public URL of the runtime named in its current activation.
+    runtime_urls: LookupMap<String, String>,
+    /// token_id → highest activation version ever recorded, kept after activations are dropped, so a
+    /// later owner can never reuse a lower version.
+    max_versions: LookupMap<String, u32>,
+}
+
+/// The v2 state layout, read once by `migrate`.
+#[near(serializers = [borsh])]
+pub struct DeedV2 {
+    registry: AccountId,
+    revert_window_ns: u64,
+    royalty_account: AccountId,
+    royalty_bps: u16,
+    next_nonce: u64,
+    next_sale_id: u64,
+    activations: LookupMap<String, Activation>,
+    listings: IterableMap<String, Listing>,
+    sales: LookupMap<u64, Sale>,
+    latest_sale: LookupMap<String, u64>,
+}
+
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 // ---------- events (NEP-297) ----------
@@ -202,19 +290,51 @@ impl Deed {
         royalty_account: AccountId,
         royalty_bps: u16,
         revert_window_ns: Option<U64>,
+        job_timeout_ns: Option<U64>,
     ) -> Self {
         require!(royalty_bps <= MAX_ROYALTY_BPS, "royalty_bps must be at most 1000 (10%)");
         Self {
             registry,
             royalty_account,
             royalty_bps,
-            revert_window_ns: revert_window_ns.map(|v| v.0).unwrap_or(DEFAULT_REVERT_WINDOW_NS),
+            // Kept only for sales made before v3; new sales pay the seller at once.
+            revert_window_ns: revert_window_ns.map(|v| v.0).unwrap_or(0),
             next_nonce: 1,
             next_sale_id: 1,
             activations: LookupMap::new(Key::Activations),
             listings: IterableMap::new(Key::Listings),
             sales: LookupMap::new(Key::Sales),
             latest_sale: LookupMap::new(Key::LatestSale),
+            job_timeout_ns: job_timeout_ns.map(|v| v.0).unwrap_or(DEFAULT_JOB_TIMEOUT_NS),
+            next_job_id: 1,
+            jobs: LookupMap::new(Key::Jobs),
+            runtime_urls: LookupMap::new(Key::RuntimeUrls),
+            max_versions: LookupMap::new(Key::MaxVersions),
+        }
+    }
+
+    /// v2 → v3 upgrade: keeps every activation, listing and sale; adds the job escrow and runtime URLs;
+    /// new sales pay the seller immediately.
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate(job_timeout_ns: Option<U64>) -> Self {
+        let old: DeedV2 = env::state_read().unwrap_or_else(|| env::panic_str("no v2 state to migrate"));
+        Self {
+            registry: old.registry,
+            revert_window_ns: old.revert_window_ns,
+            royalty_account: old.royalty_account,
+            royalty_bps: old.royalty_bps,
+            next_nonce: old.next_nonce,
+            next_sale_id: old.next_sale_id,
+            activations: old.activations,
+            listings: old.listings,
+            sales: old.sales,
+            latest_sale: old.latest_sale,
+            job_timeout_ns: job_timeout_ns.map(|v| v.0).unwrap_or(DEFAULT_JOB_TIMEOUT_NS),
+            next_job_id: 1,
+            jobs: LookupMap::new(Key::Jobs),
+            runtime_urls: LookupMap::new(Key::RuntimeUrls),
+            max_versions: LookupMap::new(Key::MaxVersions),
         }
     }
 
@@ -229,23 +349,23 @@ impl Deed {
         config_hash: String,
         price_yocto: U128,
         version: u32,
+        runtime_url: Option<String>,
     ) -> Promise {
         split_token_id(&token_id);
-        require!(
-            config_hash.len() == 64 && config_hash.chars().all(|c| c.is_ascii_hexdigit()),
-            "config_hash must be a hex sha256"
-        );
+        require!(is_hex64(&config_hash), "config_hash must be a hex sha256");
+        if let Some(u) = &runtime_url {
+            require!(
+                u.starts_with("https://") && u.len() <= MAX_RUNTIME_URL_LEN && !u.chars().any(|c| c.is_whitespace()),
+                "runtime_url must be an https:// URL of at most 200 characters"
+            );
+        }
         require!(price_yocto.0 > 0, "price must be positive");
         require!(
             !self.listings.contains_key(&token_id),
             "name is listed for sale; cancel the listing before activating"
         );
-        if let Some(prev) = self.activations.get(&token_id) {
-            require!(
-                version > prev.version,
-                format!("version must be greater than {}", prev.version)
-            );
-        }
+        let floor = self.version_floor(&token_id);
+        require!(version > floor, format!("version must be greater than {floor}"));
         let caller = env::predecessor_account_id();
         ext_registry::ext(self.registry.clone())
             .with_static_gas(GAS_VIEW)
@@ -253,7 +373,7 @@ impl Deed {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_CALLBACK)
-                    .on_activate_owner(caller, token_id, runtime_id, config_hash, price_yocto, version),
+                    .on_activate_owner(caller, token_id, runtime_id, config_hash, price_yocto, version, runtime_url),
             )
     }
 
@@ -266,7 +386,8 @@ impl Deed {
         config_hash: String,
         price_yocto: U128,
         version: u32,
-    ) -> Activation {
+        runtime_url: Option<String>,
+    ) -> ActivationView {
         let bytes = promise_ok().unwrap_or_else(|| env::panic_str("registry read failed; try again"));
         let token: Option<TokenView> = serde_json::from_slice(&bytes)
             .unwrap_or_else(|_| env::panic_str("unexpected registry response"));
@@ -275,9 +396,7 @@ impl Deed {
             .unwrap_or_else(|| env::panic_str("name not found in registry"));
         require!(owner == caller, "only the current owner of the name can activate it");
         // Re-check after the async gap.
-        if let Some(prev) = self.activations.get(&token_id) {
-            require!(version > prev.version, "a newer activation landed first");
-        }
+        require!(version > self.version_floor(&token_id), "a newer activation landed first");
         let activation = Activation {
             owner,
             runtime_id,
@@ -288,11 +407,18 @@ impl Deed {
             activated_at_ns: U64(env::block_timestamp()),
         };
         self.activations.insert(token_id.clone(), activation.clone());
-        emit(
-            "activated",
-            serde_json::json!({"token_id": token_id, "activation": activation}),
-        );
-        activation
+        self.max_versions.insert(token_id.clone(), version);
+        match &runtime_url {
+            Some(u) => {
+                self.runtime_urls.insert(token_id.clone(), u.clone());
+            }
+            None => {
+                self.runtime_urls.remove(&token_id);
+            }
+        }
+        let view = self.view_of(&token_id, activation);
+        emit("activated", serde_json::json!({"token_id": token_id, "activation": view}));
+        view
     }
 
     // ===== listing (NEP-171 receiver) =====
@@ -339,13 +465,10 @@ impl Deed {
             state: ListingState::Active,
         };
         self.listings.insert(token_id.clone(), listing.clone());
-        // The seller's activation is dead the moment the owner changes; drop it so
-        // nothing can read it as current.
-        let dropped = self.activations.remove(&token_id);
-        emit(
-            "listed",
-            serde_json::json!({"listing": listing, "activation_dropped": dropped.is_some()}),
-        );
+        // v3: the seller's activation stays while the name is listed, so the service keeps answering
+        // for the seller (payments made while listed reach the seller at the sale, B3). It is dropped
+        // the moment the sale completes; activation by the escrow itself is impossible.
+        emit("listed", serde_json::json!({"listing": listing}));
         PromiseOrValue::Value(false)
     }
 
@@ -375,19 +498,40 @@ impl Deed {
         self.listings.insert(token_id.clone(), listing.clone());
         let (tla_id, label) = split_token_id(&token_id);
         // B3: point payout at the seller first, so the sale rotation sweeps any NEAR paid in
-        // while the name was listed to the seller (not to this escrow).
-        self.payout_to(&tla_id, &label, &listing.seller)
-            .then(
-                ext_registry::ext(self.registry.clone())
-                    .with_attached_deposit(ONE_YOCTO)
-                    .with_static_gas(GAS_TRANSFER)
-                    .transfer_sub_account(tla_id, label, buyer.clone()),
-            )
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_CALLBACK)
-                    .on_buy_resolved(token_id, buyer, U128(deposit)),
-            )
+        // while the name was listed to the seller (not to this escrow). The transfer runs only if that
+        // succeeded: a plain `.then` would run it after a failure too and strand the sweep here.
+        self.payout_to(&tla_id, &label, &listing.seller).then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_AFTER_PAYOUT)
+                .on_buy_payout_set(token_id, buyer, U128(deposit)),
+        )
+    }
+
+    #[private]
+    pub fn on_buy_payout_set(&mut self, token_id: String, buyer: AccountId, paid: U128) -> PromiseOrValue<bool> {
+        if promise_ok().is_none() {
+            let mut listing = self.listings.get(&token_id).cloned().expect("listing vanished");
+            listing.state = ListingState::Active;
+            self.listings.insert(token_id.clone(), listing);
+            let _ = Promise::new(buyer.clone()).transfer(NearToken::from_yoctonear(paid.0));
+            emit(
+                "sale_failed_refunded",
+                serde_json::json!({"token_id": token_id, "buyer": buyer, "refund_yocto": paid, "reason": "payout re-point failed"}),
+            );
+            return PromiseOrValue::Value(false);
+        }
+        let (tla_id, label) = split_token_id(&token_id);
+        PromiseOrValue::Promise(
+            ext_registry::ext(self.registry.clone())
+                .with_attached_deposit(ONE_YOCTO)
+                .with_static_gas(GAS_TRANSFER)
+                .transfer_sub_account(tla_id, label, buyer.clone())
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_CALLBACK)
+                        .on_buy_resolved(token_id, buyer, paid),
+                ),
+        )
     }
 
     #[private]
@@ -405,31 +549,101 @@ impl Deed {
             return false;
         }
         self.listings.remove(&token_id);
+        // The seller's service ends with the sale (THREAT_MODEL D2); jobs still pending under it are
+        // refunded when settled or after the timeout.
+        let dropped = self.activations.remove(&token_id);
+        if let Some(a) = &dropped {
+            // Keep the version high-water mark (also covers activations recorded before v3).
+            let floor = a.version.max(self.max_versions.get(&token_id).copied().unwrap_or(0));
+            self.max_versions.insert(token_id.clone(), floor);
+        }
+        self.runtime_urls.remove(&token_id);
         let id = self.next_sale_id;
         self.next_sale_id += 1;
         let now = env::block_timestamp();
-        let sale = Sale {
+        let mut sale = Sale {
             id: U64(id),
             token_id: token_id.clone(),
             seller: listing.seller,
             buyer,
             price_yocto: paid,
             sold_at_ns: U64(now),
-            final_after_ns: U64(now.saturating_add(self.revert_window_ns)),
-            state: SaleState::Pending,
+            final_after_ns: U64(now),
+            state: SaleState::Paid,
             royalty_account: self.royalty_account.clone(),
             royalty_yocto: U128(paid.0 / 10_000 * self.royalty_bps as u128),
         };
+        // v3: the transfer is complete (on deployed House of Stake code it can't be undone), so the
+        // seller and the royalty are paid now, in the same transaction as the sale.
+        self.pay_proceeds(&sale);
+        sale.state = SaleState::Paid;
         self.sales.insert(id, sale.clone());
         self.latest_sale.insert(token_id, id);
-        emit("sold", serde_json::json!({"sale": sale}));
+        emit("sold", serde_json::json!({"sale": sale, "activation_dropped": dropped.is_some()}));
+        emit("proceeds_paid", serde_json::json!({"sale": sale}));
         true
+    }
+
+    // ===== a name back in the escrow after a sale =====
+
+    /// If the escrow holds a sold name that isn't listed (the buyer sent it back with a plain transfer),
+    /// anyone can return it to that sale's buyer. The seller was paid at the sale; nobody gets a refund
+    /// (THREAT_MODEL C7). Attach at least 230 Tgas.
+    pub fn recover_name(&mut self, token_id: String) -> Promise {
+        require!(!self.listings.contains_key(&token_id), "name is listed; buy or cancel instead");
+        let sale = self
+            .latest_sale
+            .get(&token_id)
+            .and_then(|id| self.sales.get(id))
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("no sale of this name"));
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(280),
+            "attach at least 280 Tgas"
+        );
+        ext_registry::ext(self.registry.clone())
+            .with_static_gas(GAS_VIEW)
+            .nft_token(token_id.clone())
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_SET_PAYOUT.saturating_add(GAS_AFTER_PAYOUT).saturating_add(Gas::from_tgas(15)))
+                    .on_recover_owner(token_id, sale.buyer),
+            )
+    }
+
+    #[private]
+    pub fn on_recover_owner(&mut self, token_id: String, buyer: AccountId) -> Promise {
+        let owner = promise_ok()
+            .and_then(|b| serde_json::from_slice::<Option<TokenView>>(&b).ok())
+            .flatten()
+            .map(|t| t.owner_id)
+            .unwrap_or_else(|| env::panic_str("registry read failed; try again"));
+        require!(owner == env::current_account_id(), "the escrow doesn't hold this name");
+        require!(!self.listings.contains_key(&token_id), "name is listed");
+        let (tla_id, label) = split_token_id(&token_id);
+        self.payout_to(&tla_id, &label, &buyer).then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_AFTER_PAYOUT)
+                .on_recover_payout_set(token_id, buyer),
+        )
+    }
+
+    #[private]
+    pub fn on_recover_payout_set(&mut self, token_id: String, buyer: AccountId) -> Promise {
+        require!(promise_ok().is_some(), "payout re-point failed; try again");
+        let (tla_id, label) = split_token_id(&token_id);
+        emit("name_recovered", serde_json::json!({"token_id": token_id, "to": buyer}));
+        ext_registry::ext(self.registry.clone())
+            .with_attached_deposit(ONE_YOCTO)
+            .with_static_gas(GAS_TRANSFER)
+            .transfer_sub_account(tla_id, label, buyer)
     }
 
     // ===== proceeds =====
 
-    /// Anyone may call once the safety window has passed. Always pays the seller (and royalty);
-    /// if the name is back in this escrow unlisted, it is recorded as the buyer's listing (THREAT_MODEL C5).
+    /// For sales made before v3 only (they held proceeds for a 5-minute window). Anyone may call once
+    /// the window has passed. Always pays the seller (and royalty); if the name is back in this escrow
+    /// unlisted, it is recorded as the buyer's listing.
     pub fn claim_proceeds(&mut self, sale_id: U64) -> Promise {
         let mut sale = self
             .sales
@@ -471,14 +685,7 @@ impl Deed {
         // `Revert` is only used when an nft_transfer_call receiver refuses the token. The window above
         // is kept as insurance against future registry changes.)
         sale.state = SaleState::Paid;
-        let royalty = sale.royalty_yocto.0;
-        let to_seller = sale.price_yocto.0 - royalty;
-        let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(to_seller));
-        if royalty > 0 && sale.royalty_account != sale.seller {
-            let _ = Promise::new(sale.royalty_account.clone()).transfer(NearToken::from_yoctonear(royalty));
-        } else if royalty > 0 {
-            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(royalty));
-        }
+        self.pay_proceeds(&sale);
         emit("proceeds_paid", serde_json::json!({"sale": sale}));
         // If the name is sitting in this escrow unlisted (the buyer sent it back with a plain transfer,
         // or a future registry reverted it), it belongs to the buyer: record it as the buyer's listing at
@@ -519,18 +726,34 @@ impl Deed {
         listing.state = ListingState::Cancelling;
         self.listings.insert(token_id.clone(), listing.clone());
         let (tla_id, label) = split_token_id(&token_id);
-        self.payout_to(&tla_id, &label, &listing.seller)
-            .then(
-                ext_registry::ext(self.registry.clone())
-                    .with_attached_deposit(ONE_YOCTO)
-                    .with_static_gas(GAS_TRANSFER)
-                    .transfer_sub_account(tla_id, label, listing.seller.clone()),
-            )
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_CALLBACK)
-                    .on_cancel_resolved(token_id),
-            )
+        self.payout_to(&tla_id, &label, &listing.seller).then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_AFTER_PAYOUT)
+                .on_cancel_payout_set(token_id),
+        )
+    }
+
+    #[private]
+    pub fn on_cancel_payout_set(&mut self, token_id: String) -> PromiseOrValue<bool> {
+        let mut listing = self.listings.get(&token_id).cloned().expect("listing vanished");
+        if promise_ok().is_none() {
+            listing.state = ListingState::Active;
+            self.listings.insert(token_id.clone(), listing);
+            emit("cancel_failed", serde_json::json!({"token_id": token_id, "reason": "payout re-point failed"}));
+            return PromiseOrValue::Value(false);
+        }
+        let (tla_id, label) = split_token_id(&token_id);
+        PromiseOrValue::Promise(
+            ext_registry::ext(self.registry.clone())
+                .with_attached_deposit(ONE_YOCTO)
+                .with_static_gas(GAS_TRANSFER)
+                .transfer_sub_account(tla_id, label, listing.seller.clone())
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_CALLBACK)
+                        .on_cancel_resolved(token_id),
+                ),
+        )
     }
 
     #[private]
@@ -559,8 +782,14 @@ impl Deed {
     pub fn get_revert_window_ns(&self) -> U64 {
         U64(self.revert_window_ns)
     }
-    pub fn get_activation(&self, token_id: String) -> Option<Activation> {
-        self.activations.get(&token_id).cloned()
+    pub fn get_activation(&self, token_id: String) -> Option<ActivationView> {
+        self.activations.get(&token_id).cloned().map(|a| self.view_of(&token_id, a))
+    }
+    pub fn get_job(&self, job_id: U64) -> Option<Job> {
+        self.jobs.get(&job_id.0).cloned()
+    }
+    pub fn get_job_timeout_ns(&self) -> U64 {
+        U64(self.job_timeout_ns)
     }
     pub fn get_listing(&self, token_id: String) -> Option<Listing> {
         self.listings.get(&token_id).cloned()
@@ -581,6 +810,149 @@ impl Deed {
             .get(&token_id)
             .and_then(|id| self.sales.get(id))
             .cloned()
+    }
+
+    // ===== job escrow =====
+
+    /// Pay for one job. The payment stays in this contract until the runtime the current activation
+    /// names settles it (paid to the name's wallet) or it is refunded. `request_hash` is sha256 (hex)
+    /// of the exact request bytes you will send to the runtime; it binds this payment to your question.
+    /// Attach at least the activation's price. Returns the job id.
+    #[payable]
+    pub fn pay_job(&mut self, token_id: String, request_hash: String) -> U64 {
+        require!(is_hex64(&request_hash), "request_hash must be a hex sha256");
+        let a = self
+            .activations
+            .get(&token_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("this Deed is not switched on"));
+        let paid = env::attached_deposit().as_yoctonear();
+        require!(paid >= a.price_yocto.0, format!("attach at least the price ({} yocto)", a.price_yocto.0));
+        let id = self.next_job_id;
+        self.next_job_id += 1;
+        let job = Job {
+            id: U64(id),
+            token_id: token_id.clone(),
+            payer: env::predecessor_account_id(),
+            amount_yocto: U128(paid),
+            runtime_id: a.runtime_id.clone(),
+            activation_version: a.version,
+            activation_owner: a.owner.clone(),
+            request_hash,
+            paid_at_ns: U64(env::block_timestamp()),
+            state: JobState::Pending,
+        };
+        self.jobs.insert(id, job.clone());
+        emit("job_paid", serde_json::json!({"job": job}));
+        U64(id)
+    }
+
+    /// The runtime delivered the answer. Only the runtime the job was paid under can call this. If the
+    /// activation the job was paid under is still current and its owner still owns the name (or listed
+    /// it), the payment goes to the name's own wallet; otherwise it is refunded to the payer.
+    pub fn settle_job(&mut self, job_id: U64, answer_hash: String) -> PromiseOrValue<JobState> {
+        require!(is_hex64(&answer_hash), "answer_hash must be a hex sha256");
+        let mut job = self.jobs.get(&job_id.0).cloned().unwrap_or_else(|| env::panic_str("no such job"));
+        require!(env::predecessor_account_id() == job.runtime_id, "only the runtime this job was paid to can settle it");
+        require!(job.state == JobState::Pending, "job is not pending");
+        let current = self.activations.get(&job.token_id).map(|a| a.version);
+        if current != Some(job.activation_version) {
+            return PromiseOrValue::Value(self.refund(job, "the Deed's activation changed before the answer was delivered"));
+        }
+        job.state = JobState::Settling;
+        self.jobs.insert(job_id.0, job.clone());
+        PromiseOrValue::Promise(
+            ext_registry::ext(self.registry.clone())
+                .with_static_gas(GAS_VIEW)
+                .nft_token(job.token_id.clone())
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_CALLBACK)
+                        .on_settle_owner(job_id, answer_hash),
+                ),
+        )
+    }
+
+    #[private]
+    pub fn on_settle_owner(&mut self, job_id: U64, answer_hash: String) -> JobState {
+        let mut job = self.jobs.get(&job_id.0).cloned().expect("job vanished");
+        let owner = promise_ok()
+            .and_then(|b| serde_json::from_slice::<Option<TokenView>>(&b).ok())
+            .flatten()
+            .map(|t| t.owner_id);
+        let Some(owner) = owner else {
+            job.state = JobState::Pending;
+            self.jobs.insert(job_id.0, job);
+            emit("job_settle_retry", serde_json::json!({"job_id": job_id, "reason": "registry read failed"}));
+            return JobState::Pending;
+        };
+        let listed_by_owner = owner == env::current_account_id()
+            && self.listings.get(&job.token_id).map(|l| l.seller == job.activation_owner).unwrap_or(false);
+        let still_current = self.activations.get(&job.token_id).map(|a| a.version) == Some(job.activation_version);
+        if !(still_current && (owner == job.activation_owner || listed_by_owner)) {
+            return self.refund(job, "the name changed hands before the answer was delivered");
+        }
+        job.state = JobState::Settled { answer_hash };
+        self.jobs.insert(job_id.0, job.clone());
+        // The Deed's own wallet earns it; on a later sale the protocol sweeps it to the then-owner's payout.
+        let _ = Promise::new(job.token_id.parse::<AccountId>().unwrap_or_else(|_| env::panic_str("bad token id")))
+            .transfer(NearToken::from_yoctonear(job.amount_yocto.0));
+        emit("job_settled", serde_json::json!({"job": job}));
+        job.state
+    }
+
+    /// Return a pending job's payment to the payer. The runtime it was paid to can do this at any time
+    /// (its answer failed); anyone can once `job_timeout_ns` has passed, so a refund never depends on
+    /// the operator.
+    pub fn refund_job(&mut self, job_id: U64) -> JobState {
+        let job = self.jobs.get(&job_id.0).cloned().unwrap_or_else(|| env::panic_str("no such job"));
+        require!(job.state == JobState::Pending, "job is not pending");
+        let caller = env::predecessor_account_id();
+        let timed_out = env::block_timestamp() >= job.paid_at_ns.0.saturating_add(self.job_timeout_ns);
+        require!(
+            caller == job.runtime_id || timed_out,
+            "only the runtime can refund before the timeout; anyone can after it"
+        );
+        let reason = if caller == job.runtime_id { "refunded by the runtime" } else { "not answered in time" };
+        self.refund(job, reason)
+    }
+
+    fn refund(&mut self, mut job: Job, reason: &str) -> JobState {
+        job.state = JobState::Refunded { reason: reason.to_string() };
+        self.jobs.insert(job.id.0, job.clone());
+        let _ = Promise::new(job.payer.clone()).transfer(NearToken::from_yoctonear(job.amount_yocto.0));
+        emit("job_refunded", serde_json::json!({"job": job}));
+        job.state
+    }
+
+    /// Highest version this name has ever been activated with (current or dropped).
+    fn version_floor(&self, token_id: &str) -> u32 {
+        let current = self.activations.get(token_id).map(|a| a.version).unwrap_or(0);
+        current.max(self.max_versions.get(token_id).copied().unwrap_or(0))
+    }
+
+    fn view_of(&self, token_id: &str, a: Activation) -> ActivationView {
+        ActivationView {
+            owner: a.owner,
+            runtime_id: a.runtime_id,
+            runtime_url: self.runtime_urls.get(token_id).cloned(),
+            config_hash: a.config_hash,
+            price_yocto: a.price_yocto,
+            version: a.version,
+            nonce: a.nonce,
+            activated_at_ns: a.activated_at_ns,
+        }
+    }
+
+    fn pay_proceeds(&self, sale: &Sale) {
+        let royalty = sale.royalty_yocto.0;
+        let to_seller = sale.price_yocto.0 - royalty;
+        let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(to_seller));
+        if royalty > 0 && sale.royalty_account != sale.seller {
+            let _ = Promise::new(sale.royalty_account.clone()).transfer(NearToken::from_yoctonear(royalty));
+        } else if royalty > 0 {
+            let _ = Promise::new(sale.seller.clone()).transfer(NearToken::from_yoctonear(royalty));
+        }
     }
 
     fn payout_to(&self, tla_id: &AccountId, label: &str, to: &AccountId) -> Promise {

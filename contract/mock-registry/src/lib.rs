@@ -49,6 +49,8 @@ pub struct MockRegistry {
     registered: LookupSet<AccountId>,
     ft_blocked: LookupSet<String>,
     sweeps: Vec<Sweep>,
+    /// Test control: make set_payout_account fail (to test that a failed re-point stops the transfer).
+    fail_payout: bool,
 }
 
 #[near]
@@ -60,7 +62,11 @@ impl MockRegistry {
             registered: LookupSet::new(b"r"),
             ft_blocked: LookupSet::new(b"f"),
             sweeps: Vec::new(),
+            fail_payout: false,
         }
+    }
+    pub fn set_fail_payout(&mut self, fail: bool) {
+        self.fail_payout = fail;
     }
 
     // ----- test controls -----
@@ -129,6 +135,7 @@ impl MockRegistry {
     #[payable]
     pub fn set_payout_account(&mut self, tla_id: AccountId, name: String, new_payout_account: AccountId) {
         require!(env::attached_deposit() == ONE_YOCTO, "ONE_YOCTO");
+        require!(!self.fail_payout, "PayoutFailed");
         let token_id = format!("{name}.{tla_id}");
         let mut e = self.entries.get(&token_id).cloned().expect("SubAccountNotFound");
         require!(env::predecessor_account_id() == e.owner, "OnlyOwner");

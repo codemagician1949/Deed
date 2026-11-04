@@ -19,7 +19,6 @@ const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
 const GLOBAL_CODE_COST_PER_BYTE: u128 = 100_000_000_000_000_000_000;
 const PRICE: NearToken = NearToken::from_near(40);
 const EARNINGS: NearToken = NearToken::from_near(3);
-const WINDOW_NS: u64 = 2_000_000_000;
 const ROYALTY_BPS: u128 = 250;
 
 /// Mainnet code hashes (base58 sha256), read from mainnet RPC on 2026-11-02.
@@ -145,7 +144,7 @@ async fn world() -> Result<World> {
     let deed = sub(&root, "deed", 20).await?.deploy(&std::fs::read("../target/near/deed/deed.wasm")?).await?.into_result()?;
     deed.call("new").args_json(json!({
         "registry": registry.id(), "royalty_account": council.id(),
-        "royalty_bps": ROYALTY_BPS, "revert_window_ns": WINDOW_NS.to_string(),
+        "royalty_bps": ROYALTY_BPS,
     })).transact().await?.into_result()?;
 
     let kofi = sub(&root, "kofi", 50).await?;
@@ -220,6 +219,21 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     // Customers pay the name.
     w.customer.transfer_near(&w.name, EARNINGS).await?.into_result()?;
 
+    // v3 job escrow: a customer pays for a job; the contract holds it until the named runtime (the agent here) settles,
+    // then the name's own keyless wallet receives it.
+    let req = "aa11bb22cc33dd44ee55ff6600778899aa11bb22cc33dd44ee55ff6600778899";
+    let job_price = NearToken::from_millinear(50);
+    let pay = |who: Account| { let (deed, name) = (w.deed.id().clone(), w.name.clone()); async move {
+        who.call(&deed, "pay_job").args_json(json!({"token_id": name, "request_hash": req})).deposit(job_price).gas(TX_GAS).transact().await
+    } };
+    let j1: String = pay(w.customer.clone()).await?.into_result()?.json()?;
+    let name_before = balance(&w.worker, &w.name).await?;
+    w.agent.call(w.deed.id(), "settle_job").args_json(json!({"job_id": j1, "answer_hash": req})).gas(TX_GAS).transact().await?.into_result()?;
+    let earned = balance(&w.worker, &w.name).await?.saturating_sub(name_before);
+    report("J1", earned == job_price.as_yoctonear(), "a settled job pays the name's own wallet (escrowed until the runtime delivered)");
+    // A job paid now but settled only after the sale must not be paid to the name.
+    let j2: String = pay(w.customer.clone()).await?.into_result()?.json()?;
+
     // --- Kofi lists: name moves into the escrow (rotation #1).
     let kofi_before = balance(&w.worker, w.kofi.id()).await?;
     let r = w.kofi.call(w.registry.id(), "nft_transfer_call").args_json(json!({
@@ -234,14 +248,26 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     w.customer.transfer_near(&w.name, NearToken::from_near(1)).await?.into_result()?;
     let kofi_before_sale = balance(&w.worker, w.kofi.id()).await?;
 
-    // --- Maya buys (rotation #2).
+    let creator_before = balance(&w.worker, w.council.id()).await?;
+
+    // --- Maya buys (rotation #2). Kofi and the royalty are paid in the same transaction.
     let listing: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
     w.maya.call(w.deed.id(), "buy").args_json(json!({
         "token_id": w.name, "expected_price": PRICE.as_yoctonear().to_string(), "listing_nonce": listing["nonce"],
     })).deposit(PRICE).gas(TX_GAS).transact().await?.into_result()?;
     report("G5", owner_of(&w).await? == w.maya.id().as_str(), "Maya owns the name");
-    let listed_income = balance(&w.worker, w.kofi.id()).await?.saturating_sub(kofi_before_sale);
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
+    let kofi_gain = balance(&w.worker, w.kofi.id()).await?.saturating_sub(kofi_before_sale);
+    let listed_income = kofi_gain.saturating_sub(PRICE.as_yoctonear() - royalty);
+    report("G5", kofi_gain >= PRICE.as_yoctonear() - royalty, "Kofi receives the price minus royalty in the sale transaction");
+    report("G5", balance(&w.worker, w.council.id()).await? - creator_before == royalty, "template creator receives the royalty");
     report("B3", listed_income >= NearToken::from_millinear(990).as_yoctonear(), &format!("money paid in while listed went to Kofi at the sale ({listed_income} yocto)"));
+    // J2: the job paid under Kofi is refunded to the customer, not paid into Maya's name.
+    let cust_before = balance(&w.worker, w.customer.id()).await?;
+    w.agent.call(w.deed.id(), "settle_job").args_json(json!({"job_id": j2, "answer_hash": req})).gas(TX_GAS).transact().await?.into_result()?;
+    let j: Value = w.deed.view("get_job").args_json(json!({"job_id": j2})).await?.json()?;
+    report("J2", j["state"]["Refunded"].is_object() && balance(&w.worker, w.customer.id()).await? - cust_before == job_price.as_yoctonear(),
+        "a job paid before the sale and settled after it is refunded to the customer");
 
     // --- Kofi's side attacks. Each must fail on-chain.
     report("A1", exec(&w, &w.agent, transfer_req(w.kofi.id(), tenth)).await?.is_failure(), "Kofi's agent cannot spend after the sale");
@@ -269,27 +295,21 @@ async fn sale_on_real_hos_bytecode_locks_the_seller_out() -> Result<()> {
     let status: Value = w.worker.view(&w.name, "hos_agent_status").args_json(json!({"extension": w.agent.id()})).await?.json()?;
     report("G1", status["extension_enabled"] == false && status["grant"].is_null(), "agent extension and grant are gone (hos_agent_status)");
 
-    // --- Maya runs it; Kofi gets paid after the window.
+    // --- Maya switches it on with her own runtime URL.
     w.maya.call(w.deed.id(), "activate").args_json(json!({
         "token_id": w.name, "runtime_id": w.agent.id(),
         "config_hash": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
-        "price_yocto": "50000000000000000000000", "version": 2,
+        "price_yocto": "50000000000000000000000", "version": 2, "runtime_url": "https://maya-runtime.example",
     })).gas(TX_GAS).transact().await?.into_result()?;
-    let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
-    w.worker.fast_forward(10).await?;
-    let before = balance(&w.worker, w.kofi.id()).await?;
-    let creator_before = balance(&w.worker, w.council.id()).await?;
-    w.maya.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
-    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
-    report("G5", balance(&w.worker, w.kofi.id()).await? - before == PRICE.as_yoctonear() - royalty, "Kofi receives the price minus royalty");
-    report("G5", balance(&w.worker, w.council.id()).await? - creator_before == royalty, "template creator receives the royalty");
+    let a: Value = w.deed.view("get_activation").args_json(json!({"token_id": w.name})).await?.json()?;
+    report("D3", a["owner"] == w.maya.id().as_str() && a["runtime_url"] == "https://maya-runtime.example", "Maya's activation names her runtime URL");
     println!("\nAll checks ran against mainnet bytecode: {:?}", MAINNET.iter().map(|(n, _)| *n).collect::<Vec<_>>());
     Ok(())
 }
 
 /// THREAT_MODEL C7 on real House of Stake bytecode: after a sale, the buyer sends the name back to the
-/// escrow with a plain transfer and waits out the window, hoping the claim treats it as a revert and
-/// refunds them. The seller must still be paid, and the buyer must be able to take the name back.
+/// escrow with a plain transfer, hoping for a refund. The seller was paid at the sale; the buyer can only
+/// take the name back.
 #[tokio::test]
 async fn buyer_returning_the_name_gets_no_refund_on_real_bytecode() -> Result<()> {
     let w = world().await?;
@@ -312,17 +332,15 @@ async fn buyer_returning_the_name_gets_no_refund_on_real_bytecode() -> Result<()
     assert_eq!(owner_of(&w).await?, w.deed.id().as_str());
 
     let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
-    w.worker.fast_forward(10).await?;
+    assert_eq!(sale["state"], "Paid", "the seller was paid at the sale");
+    w.worker.fast_forward(5).await?; // let gas refunds from earlier txs land before measuring
     let kofi_before = balance(&w.worker, w.kofi.id()).await?;
     let maya_before = balance(&w.worker, w.maya.id()).await?;
-    w.customer.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
-    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
-    assert_eq!(balance(&w.worker, w.kofi.id()).await? - kofi_before, PRICE.as_yoctonear() - royalty, "seller paid");
+    // Anyone hands the name back to the buyer; there is nothing to refund.
+    w.customer.call(w.deed.id(), "recover_name").args_json(json!({"token_id": w.name})).gas(TX_GAS).transact().await?.into_result()?;
+    assert_eq!(owner_of(&w).await?, w.maya.id().as_str(), "Maya has the name again");
     assert_eq!(balance(&w.worker, w.maya.id()).await?, maya_before, "no refund to the buyer");
-    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
-    assert_eq!(l["seller"], w.maya.id().as_str(), "the name is recorded as Maya's");
-    w.maya.call(w.deed.id(), "cancel").args_json(json!({"token_id": w.name})).deposit(ONE_YOCTO).gas(TX_GAS).transact().await?.into_result()?;
-    assert_eq!(owner_of(&w).await?, w.maya.id().as_str(), "Maya takes the name back");
+    assert_eq!(balance(&w.worker, w.kofi.id()).await?, kofi_before, "the seller keeps the price");
     println!("PASS C7   buyer returning the name gets no refund; seller paid; buyer recovers the name (real bytecode)");
     Ok(())
 }
@@ -367,27 +385,25 @@ async fn failed_transfer_refunds_buyer_on_real_bytecode() -> Result<()> {
     Ok(())
 }
 
-/// The buyer resells the name to a third party before the seller's payment is released: the sale
-/// already completed, so the seller is still paid, and the third party keeps the name.
+/// The buyer resells the name to a third party right after buying: the seller was paid in the sale
+/// transaction, the third party keeps the name, and the escrow can't claw it back.
 #[tokio::test]
-async fn onward_transfer_before_claim_seller_still_paid_on_real_bytecode() -> Result<()> {
+async fn onward_transfer_right_after_the_sale_on_real_bytecode() -> Result<()> {
     let w = world().await?;
     let nonce = list_on(&w).await?;
+    w.worker.fast_forward(5).await?;
+    let kofi_before = balance(&w.worker, w.kofi.id()).await?;
     buy_on(&w, &nonce).await?.into_result()?;
+    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
+    assert_eq!(balance(&w.worker, w.kofi.id()).await? - kofi_before, PRICE.as_yoctonear() - royalty, "seller paid at the sale");
     let r = w.maya.call(w.registry.id(), "transfer_sub_account")
         .args_json(json!({"tla_id": w.tla, "name": "preflight", "new_owner": w.customer.id()}))
         .deposit(ONE_YOCTO).gas(TX_GAS).transact().await?;
     if !r.receipt_failures().is_empty() { bail!("onward transfer failed: {:?}", r.receipt_failures()); }
     assert_eq!(owner_of(&w).await?, w.customer.id().as_str());
-    let sale: Value = w.deed.view("get_latest_sale").args_json(json!({"token_id": w.name})).await?.json()?;
-    w.worker.fast_forward(10).await?;
-    let kofi_before = balance(&w.worker, w.kofi.id()).await?;
-    w.agent.call(w.deed.id(), "claim_proceeds").args_json(json!({"sale_id": sale["id"]})).gas(TX_GAS).transact().await?.into_result()?;
-    let royalty = PRICE.as_yoctonear() / 10_000 * ROYALTY_BPS;
-    assert_eq!(balance(&w.worker, w.kofi.id()).await? - kofi_before, PRICE.as_yoctonear() - royalty);
+    let r = w.agent.call(w.deed.id(), "recover_name").args_json(json!({"token_id": w.name})).gas(TX_GAS).transact().await?;
+    assert!(failed_with(&r, "doesn't hold this name"), "the escrow can't take a name it doesn't hold");
     assert_eq!(owner_of(&w).await?, w.customer.id().as_str(), "the third party keeps the name");
-    let l: Value = w.deed.view("get_listing").args_json(json!({"token_id": w.name})).await?.json()?;
-    assert!(l.is_null(), "no listing is created when the escrow doesn't hold the name");
-    println!("PASS C8   buyer resold before claim: seller paid, third party keeps the name (real bytecode)");
+    println!("PASS C8   buyer resold right after buying: seller paid at the sale, third party keeps the name (real bytecode)");
     Ok(())
 }
