@@ -1,6 +1,6 @@
 # Invariants: what is guaranteed, by whose code, proven where
 
-Contract `deed` v3 (deployed on testnet as `deed.deedhq.testnet`, code hash `EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`).
+Contract `deed` v3.1 (deployed on testnet as `deed.deedhq.testnet`, code hash `BNYM6xvXn2mezXiFCKe7cZsEcbWYePVmWfd8T21PoibK`). v3.1 only adds the `get_version_floor` view to v3 (`EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`, the code the scripted live sale ran on); stored state is unchanged.
 
 Legend for **Proven on**:
 - **Real** = local NEAR sandbox running House of Stake's **mainnet bytecode** (hash-checked) + `deed` ([contract/deed/tests/real_fleet.rs](../contract/deed/tests/real_fleet.rs))

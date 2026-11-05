@@ -75,6 +75,17 @@ This is one scripted, team-run scenario: a bounded test, not proof that every tr
 
 ---
 
+### Browser run with Meteor Wallet (2026-11-05)
+
+The same flow done by hand in Chrome with [Meteor Wallet](https://wallet.meteorwallet.app) on testnet (recorded for the demo video), with three accounts: a customer (`amara-deed.testnet`), the seller (`maya.deedhq.testnet`) and the buyer (`kofi.deedhq.testnet`):
+
+- The customer paid a job into the escrow from the Try page; it was answered with all three enclave checks and paid into the name (job 7, under Maya, activation v7).
+- Maya signed a holder sign-in (NEP-413) and saw her customers' questions; then listed for 1 NEAR from the console.
+- Kofi bought from the Deed page and switched the service on from his console (activation v8). The first attempt failed: the app guessed the next version from event history and missed the high-water mark of 7. Fixed by adding the `get_version_floor` view (contract v3.1) and reading it in the app.
+- The customer's next job was accepted under Kofi (activation v8) and paid into the same name (job 8).
+- Maya, with her own full-access key, then tried to take money from the name's wallet ([`C8kedLuR…`](https://testnet.nearblocks.io/txns/C8kedLuRjPq8LNMJcQiom8HHnbNW3qsvcq4FR7tF2pVP): "extension 'maya.deedhq.testnet' is not enabled"), sell it again ([`DVG5sZH8…`](https://testnet.nearblocks.io/txns/DVG5sZH8k4X49JSn7sjmwY4CeW7EhfQzi3TpNw6R5teu): registry `only_owner`), switch it back on ([`2wDFYRx3…`](https://testnet.nearblocks.io/txns/2wDFYRx3VuyGjaiiwkoM7aXt5QjHr12eigXGTd94sckW): "only the current owner of the name can activate it") and sign in as the name (`w_resolve_auth`: "named account is not an owner of this account"). All refused.
+- Also found: Meteor Web's NEAR Connect sign-in sometimes doesn't report back, and signing then returns nothing. The app now says so ("Your wallet returned without signing…") instead of showing an empty transaction.
+
 ## Testing strategy
 
 Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 39 tests against an in-memory model of the v3 contract, so every ordering of "payment / sale / activation / answer / settlement" can be forced):

@@ -172,7 +172,7 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 | `recover_name(token_id)` | anyone | a name back in the escrow after its sale goes back to that sale's buyer (≥ 280 Tgas) |
 | `claim_proceeds(sale_id)` | anyone | only for sales made before v3 (which had a waiting window) |
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
-| views | anyone | `get_activation` (incl. `runtime_url`), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
+| views | anyone | `get_activation` (incl. `runtime_url`), `get_version_floor` (the version a new activation must exceed; kept across sales), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
 
 **Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; older: `returned_to_buyer_listing`, `claim_retry`, `sale_reverted_refunded` (v1).
 
