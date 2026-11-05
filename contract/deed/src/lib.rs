@@ -788,6 +788,11 @@ impl Deed {
     pub fn get_job(&self, job_id: U64) -> Option<Job> {
         self.jobs.get(&job_id.0).cloned()
     }
+    /// The lowest version a new activation of this name must exceed (current activation or the
+    /// high-water mark kept across sales). Clients use it to pick the next version.
+    pub fn get_version_floor(&self, token_id: String) -> u32 {
+        self.version_floor(&token_id)
+    }
     pub fn get_job_timeout_ns(&self) -> U64 {
         U64(self.job_timeout_ns)
     }

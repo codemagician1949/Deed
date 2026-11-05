@@ -247,6 +247,8 @@ async fn full_sale_seller_locked_out_and_paid_at_once() -> Result<()> {
     // D2: the seller can't re-activate; the buyer can, but never with a version used before (the
     // high-water mark outlives the dropped activation).
     assert!(fails_with(&activate(&env, &env.seller, 2).await?, "only the current owner"));
+    let floor: u32 = env.deed.view("get_version_floor").args_json(json!({"token_id": NAME})).await?.json()?;
+    assert_eq!(floor, 1, "the floor clients read survives the dropped activation");
     assert!(fails_with(&activate(&env, &env.buyer, 1).await?, "version must be greater than 1"));
     activate(&env, &env.buyer, 2).await?.into_result()?;
     Ok(())
