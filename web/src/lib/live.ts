@@ -282,7 +282,7 @@ function dailySeries(history: HistoryEvent[], days = 14): number[] {
 export async function loadDeed(tokenId: string): Promise<LiveDeed | null> {
   const token = await view<TokenView | null>(CONFIG.registry, "nft_token", { token_id: tokenId })
   if (!token) return null
-  const [activation, listing, latestSale, account, payout, nameTxs, deedTxs] = await Promise.all([
+  const [activation, listing, latestSale, account, payout, nameTxs, deedTxs, versionFloor] = await Promise.all([
     view<Activation | null>(CONFIG.deed, "get_activation", { token_id: tokenId }),
     view<Listing | null>(CONFIG.deed, "get_listing", { token_id: tokenId }),
     view<Sale | null>(CONFIG.deed, "get_latest_sale", { token_id: tokenId }),
@@ -290,6 +290,8 @@ export async function loadDeed(tokenId: string): Promise<LiveDeed | null> {
     view<string>(tokenId, "hos_payout_account").catch(() => null),
     accountTxHashes(tokenId).catch(() => [] as string[]),
     accountTxHashes(CONFIG.deed).catch(() => [] as string[]),
+    // The contract's own floor (survives sales); history below is only a fallback for older deployments.
+    view<number>(CONFIG.deed, "get_version_floor", { token_id: tokenId }).catch(() => 0),
   ])
   const hashes = Array.from(new Set([...nameTxs, ...deedTxs]))
   const txs = await transactions(hashes)
@@ -345,7 +347,7 @@ export async function loadDeed(tokenId: string): Promise<LiveDeed | null> {
     maxVersion: relevant
       .flatMap((t) => t.events)
       .filter((e) => e.standard === "deed" && e.event === "activated")
-      .reduce((m, e) => Math.max(m, ((e.data as { activation?: { version?: number } }[])[0]?.activation?.version ?? 0)), activation?.version ?? 0),
+      .reduce((m, e) => Math.max(m, ((e.data as { activation?: { version?: number } }[])[0]?.activation?.version ?? 0)), Math.max(activation?.version ?? 0, versionFloor ?? 0)),
   }
 }
 

@@ -36,6 +36,10 @@ interface WalletState {
 
 const Ctx = createContext<WalletState | null>(null)
 
+// Some wallets resolve with nothing when their saved session is incomplete (seen with Meteor Web after a
+// sign-in that didn't report back). Nothing was signed then; say so instead of showing an empty hash.
+const NO_REPLY = "Your wallet returned without signing. Disconnect (click your account name), connect again, and retry."
+
 // Set by WalletProvider: re-reads the connected account from NEAR Connect; true if one is connected.
 let refresh: (c: NearConnectorT) => Promise<boolean> = async () => false
 
@@ -125,6 +129,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         receiverId,
         actions: [{ type: "FunctionCall", params: { methodName: method, args, gas: TGAS(tgas), deposit: depositYocto } }],
       } as never)
+      if (!out) throw new Error(NO_REPLY)
       const status = JSON.stringify((out as { status?: unknown })?.status ?? {})
       const hash = (out as { transaction?: { hash?: string } })?.transaction?.hash ?? ""
       if (status.includes("Failure")) {
@@ -155,6 +160,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         receiverId,
         actions: [{ type: "Transfer", params: { deposit: yocto } }],
       } as never)
+      if (!out) throw new Error(NO_REPLY)
       const hash = (out as { transaction?: { hash?: string } })?.transaction?.hash ?? ""
       if (JSON.stringify((out as { status?: unknown })?.status ?? {}).includes("Failure")) throw new Error("The payment failed on chain.")
       return hash
@@ -170,6 +176,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const wallet = await c.wallet()
       const nonce = crypto.getRandomValues(new Uint8Array(32))
       const signed = await wallet.signMessage({ message, recipient, nonce, signerId: account } as never)
+      if (!signed) throw new Error(NO_REPLY)
       const s = signed as unknown as { publicKey: string; signature: string; accountId: string }
       if (s.accountId && s.accountId !== account) throw new Error(`Signed by ${s.accountId}, not ${account}.`)
       return { public_key: s.publicKey, signature: s.signature, nonce: btoa(String.fromCharCode(...nonce)) }
