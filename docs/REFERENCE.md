@@ -71,24 +71,24 @@ view preflight.deedbot.deedhq.testnet w_extensions '{}'                         
 cd web && bun install && bun run dev
 ```
 Open http://localhost:5173. Every page reads **NEAR testnet** directly (RPC for contract state, the FastNEAR transaction API for history; no backend). **You will see:**
-- `/`: what a Deed is, live totals, and **"Watch a sale"**: an 8-step animation of a sale (name moves, seller's keys break, earnings settle, 5-min safety window, buyer switches it on).
+- `/`: what a Deed is, live totals, and **"Watch a sale"**: an 8-step animation of a sale (name moves, seller's keys break, earnings settle, seller paid in the same step, buyer switches it on).
 - `/market`: every Deed in the registry (`nft_tokens`), with filters and search.
-- `/deed/preflight.deedbot.deedhq.testnet`: the title page. Status, owner, price, and a **History** built from every transaction that touched the name: both live sales, each earnings sweep, each permission wipe, the royalty, and every blocked misuse attempt with the wallet's own error text; each line links to the transaction. Tabs for owners (with what was paid in during each holding), earnings, and on-chain facts (balance, payout account, lease, code hashes). **Buy** sends the real `buy` transaction from your wallet; after a sale, a countdown shows when the seller's payment can be released.
+- `/deed/preflight.deedbot.deedhq.testnet`: the title page. Status, owner, price, and a **History** built from every transaction that touched the name: both live sales, each earnings sweep, each permission wipe, the royalty, and every blocked misuse attempt with the wallet's own error text; each line links to the transaction. Tabs for owners (with what was paid in during each holding), earnings, and on-chain facts (balance, payout account, lease, code hashes). **Buy** sends the real `buy` transaction from your wallet; the seller is paid in that same transaction.
 - `/proof`: **the live testnet run** (each step with its transaction link), then every attack as a card.
-- `/console`: locked until you connect. With a NEAR testnet wallet that owns a Deed you can switch the service on, change its price, list it or cancel a listing. Without a wallet, *Or look around as an owner* opens a read-only preview of an owner's real view (it can't sign).
+- `/console`: locked until you connect. With a NEAR testnet wallet that owns a Deed you can switch the service on (runtime id, URL, price), list it or cancel a listing, and sign in (one signed message, checked on chain) to see the full job record with your customers' transactions, which the public ledger redacts. Without a wallet, *Or look around as an owner* opens a read-only preview of an owner's real view (it can't sign).
 
 Production build: `bun run build` (type-check + Vite build, output in `web/dist`).
 
 ### 4. Run the Preflight service
 
-(Or use the hosted one: `curl https://preflight-production-8802.up.railway.app/v1/health`. It runs [runtime/Dockerfile](../runtime/Dockerfile) on Railway with a persistent volume for the job ledger, so replay protection survives redeploys. It holds no NEAR key: refunds are paid from the operator's machine with `RUNTIME_URL=<host> bun run refunds --yes`, and the server records a refund only after verifying the refund transaction on chain.)
+(Or use the hosted one: `curl https://preflight-production-8802.up.railway.app/v1/health`. It runs [runtime/Dockerfile](../runtime/Dockerfile) on Railway with a persistent volume for the job ledger, so replay protection survives redeploys. Its only NEAR key is `RUNTIME_KEY`, a function-call key on `deedhq.testnet` limited to `settle_job` and `refund_job` on the Deed contract, with no deposit and a 0.5 NEAR gas allowance, made by [deploy/runtime-key.sh](../deploy/runtime-key.sh). A leaked key can settle or refund jobs, nothing else.)
 
 ```bash
-cd runtime && bun install && bun test     # 39 tests: sale mid-job, payer auth, replay (incl. after restart), fail-closed, payment checks, TEE signature check, risk flags
+cd runtime && bun install && bun test     # 39 tests: escrowed job rules, sale mid-job, settle/refund on chain, replay (incl. after restart), fail-closed, TEE signature check, risk flags
 bun run start                             # http://localhost:8787  (set NEARAI_API_KEY in the repo-root .env to answer)
 curl localhost:8787/v1/health              # runtime id, model, config fingerprint, can_answer
 ```
-**You will see** `39 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 678ff1f4…`, the sha256 of [runtime/preflight.config.json](../runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 4). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the job becomes `refund_due` and `bun run refunds --yes` pays it back from the operator account.
+**You will see** `39 pass`, then the health JSON with `can_answer: true` (when the key is set) and `config_hash: 678ff1f4…`, the sha256 of [runtime/preflight.config.json](../runtime/preflight.config.json), which is also the fingerprint in the Deed's on-chain activation (version 4). With the runtime running, the web app's **Try Preflight** page shows free risk flags as you edit a transaction; paying needs a testnet wallet, and the answer appears with its three signature checks. If the AI step fails (or no key is set), the runtime calls `refund_job` and the contract returns the payment; if the runtime is down, anyone can call `refund_job` after 15 minutes.
 
 ### 5. Re-run the live sale on testnet (needs testnet NEAR)
 ```bash
@@ -114,12 +114,11 @@ Every script is safe to re-run and skips finished steps. The verifier only count
 ```
 
 1. **Rent.** A name is rented from the registry. The registrar creates the account, runs the global `hos-wallet` code on it, and installs **no access keys**. Only extensions listed in the wallet (the owner, the lease authority, and any agents the owner adds) can act, by calling the wallet.
-2. **Activate.** The owner calls `deed.activate(token_id, runtime_id, config_hash, price, version)`. The contract makes a cross-contract `nft_token` view on the registry and, in the callback, records the activation only if the caller was the owner. These are two receipts, not one atomic step, so ownership can change in between; a stale activation is harmless because the runtime serves a job only when `activation.owner` equals the owner it reads fresh for that job. `config_hash` is the sha256 of the public service config (nothing secret).
-3. **Run and earn.** The owner can add an AI agent as a wallet extension and give it a capped `hos_grant_spend` (allow-listed receivers, budget, expiry). Customers pay NEAR into the name.
-4. **List.** The seller calls `registry.nft_transfer_call(receiver_id = deed contract, msg = {"price_yocto": "…"})`. The name rotates into the escrow; on that rotation the wallet **clears all spend grants, removes every extension, and sweeps the NEAR balance to the seller's payout account**. The escrow records the listing and deletes the seller's activation. (TLA has no NFT approvals, so the escrow must own the name while it's listed.)
-5. **Buy.** The buyer calls `deed.buy(token_id, expected_price, listing_nonce)` with exactly the price. The escrow first points the name's payout at the seller (so anything paid in while it was listed is swept to the seller), then calls `registry.transfer_sub_account(…, buyer)`. If the transfer fails, the buyer is refunded in full in the callback and the listing reopens.
-6. **Settle.** After a 5-minute settlement window (a safety margin; on the deployed House of Stake code nothing can undo a completed transfer), anyone calls `claim_proceeds(sale_id)`: the seller is paid the price minus royalty, the royalty goes to `royalty_account`. If the name is sitting in the escrow unlisted (the buyer sent it back), it is recorded as the buyer's listing so they can take it back with `cancel`; there is no refund.
-7. **Switch on.** The buyer activates with a higher version. The service answers again, earning into the same name.
+2. **Activate.** The owner calls `deed.activate(token_id, runtime_id, config_hash, price, version, runtime_url?)`. The contract makes a cross-contract `nft_token` view on the registry and, in the callback, records the activation only if the caller was the owner and `version` is above the name's high-water mark (kept across owners). These are two receipts, not one atomic step, so ownership can change in between; a stale activation earns nothing because `settle_job` re-reads the owner before paying. `config_hash` is the sha256 of the public service config (nothing secret).
+3. **Run and earn.** The owner can add an AI agent as a wallet extension and give it a capped `hos_grant_spend` (allow-listed receivers, budget, expiry). Customers pay through the job escrow: `pay_job(token_id, request_hash)` holds the price in the contract with the job's runtime, activation version and owner; the runtime answers and calls `settle_job(job_id, answer_hash)`; the contract re-reads the owner and pays the name's wallet, or refunds if the name changed hands. `refund_job` works for the runtime at once and for anyone after 15 minutes.
+4. **List.** The seller calls `registry.nft_transfer_call(receiver_id = deed contract, msg = {"price_yocto": "…"})`. The name rotates into the escrow; on that rotation the wallet **clears all spend grants, removes every extension, and sweeps the NEAR balance to the seller's payout account**. The escrow records the listing and keeps the seller's activation, so the service keeps answering while listed (those settlements reach the seller at the sale); the activation is dropped at the sale. (TLA has no NFT approvals, so the escrow must own the name while it's listed.)
+5. **Buy.** The buyer calls `deed.buy(token_id, expected_price, listing_nonce)` with exactly the price. The escrow first points the name's payout at the seller (so anything paid in while it was listed is swept to the seller); only if that succeeds (`on_buy_payout_set`) does it call `registry.transfer_sub_account(…, buyer)`. In `on_buy_resolved` the seller is paid the price minus royalty and the royalty goes to `royalty_account`; if the transfer failed, the buyer is refunded in full and the listing reopens. There is no waiting window: on the deployed House of Stake code nothing can undo a completed transfer. If a name ever sits in the escrow after its sale (the buyer sent it back), `recover_name` returns it to that buyer; nobody is refunded.
+6. **Switch on.** The buyer activates with a higher version. The service answers again, earning into the same name.
 
 Sequence of the sale (real calls):
 ```
@@ -128,9 +127,10 @@ seller ──nft_transfer_call──▶ registry ──force_transfer──▶ e
         registry ──nft_on_transfer──▶ deed   (record listing; returns false = keep)
 buyer  ──buy(price)──▶ deed ──set_payout_account(seller)──▶ registry ──▶ ext ──▶ wallet
                             ──transfer_sub_account(buyer)──▶ registry ──▶ ext ──▶ wallet (rotation #2, sweep → seller)
-                            ──on_buy_resolved──▶ deed   (Sale{Pending, final_after = now + 5 min}) or refund
-anyone ──claim_proceeds──▶ deed ──nft_token──▶ registry ──on_claim_owner──▶ pay seller + royalty (always; a name found back in escrow
-                                                                 becomes the buyer's listing, never a refund)
+                            ──on_buy_resolved──▶ deed   pay seller (price − royalty) + royalty, Sale{Paid}; or refund buyer
+
+customer ──pay_job(name, sha256(request))──▶ deed (holds the price)
+runtime  ──settle_job(job, answer_hash)──▶ deed ──nft_token──▶ registry ──on_settle_owner──▶ pay the name (owner unchanged) or refund
 ```
 
 ---
@@ -161,15 +161,20 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 | Method | Who | What |
 |---|---|---|
-| `new(registry, royalty_account, royalty_bps ≤ 1000, revert_window_ns?)` | deployer | init; settlement window defaults to 5 min. On testnet `royalty_account` = `deedhq.testnet` (the team), 250 bps |
-| `activate(token_id, runtime_id, config_hash, price_yocto, version)` | current owner | reads `nft_token` cross-contract; records only if caller == owner and version > previous |
+| `new(registry, royalty_account, royalty_bps ≤ 1000, revert_window_ns?, job_timeout_ns?)` | deployer | init; job timeout defaults to 15 min. On testnet `royalty_account` = `deedhq.testnet` (the team), 250 bps |
+| `migrate(job_timeout_ns?)` | the contract itself (deploy + init in one tx) | v2 → v3 state migration, keeps every activation, listing and sale ([deploy/upgrade-v3.sh](../deploy/upgrade-v3.sh)) |
+| `activate(token_id, runtime_id, config_hash, price_yocto, version, runtime_url?)` | current owner | reads `nft_token` cross-contract; records only if caller == owner and version > the name's high-water mark |
+| `pay_job(token_id, request_hash)` | anyone | payable, exact activated price; returns the job id; holds the money |
+| `settle_job(job_id, answer_hash)` | the job's runtime only | re-reads the owner; pays the name if the job's owner still owns it (or is the seller of the live listing), else refunds |
+| `refund_job(job_id)` | the job's runtime any time; anyone after the timeout | returns the payment to the payer |
 | `nft_on_transfer(sender_id, previous_owner_id, token_id, msg)` | registry only | records a listing `{price_yocto}`; returns `true` (give back) for bad msg, already listed, or unsettled previous sale. State only: the registry gives it 25 Tgas |
-| `buy(token_id, expected_price, listing_nonce)` | anyone but the seller | payable, exact price, ≥ 230 Tgas; re-points payout to seller, transfers the name, refunds on failure |
-| `claim_proceeds(sale_id)` | anyone | after the settlement window: pays the seller and royalty; a name back in escrow becomes the buyer's listing |
+| `buy(token_id, expected_price, listing_nonce)` | anyone but the seller | payable, exact price, ≥ 230 Tgas; re-points payout to seller, then transfers the name and pays the seller + royalty; refunds on any failure |
+| `recover_name(token_id)` | anyone | a name back in the escrow after its sale goes back to that sale's buyer (≥ 280 Tgas) |
+| `claim_proceeds(sale_id)` | anyone | only for sales made before v3 (which had a waiting window) |
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
-| views | anyone | `get_activation`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
+| views | anyone | `get_activation` (incl. `runtime_url`), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
 
-**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `returned_to_buyer_listing`, `sale_reverted_refunded` (v1 only), `claim_retry`, `cancelled`, `cancel_failed`.
+**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; older: `returned_to_buyer_listing`, `claim_retry`, `sale_reverted_refunded` (v1).
 
 ---
 
@@ -180,12 +185,12 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 | Endpoint | What |
 |---|---|
 | `POST /v1/flags {request}` | deterministic risk flags, free ([src/risk.ts](../runtime/src/risk.ts): full-access keys, account deletion, contract deploys, unlimited approvals, large values, asset moves, unusual receivers…) |
-| `POST /v1/jobs {name, payment_tx, sender, request, auth}` | the paid job; `auth = {public_key, signature, nonce}` is a NEP-413 signature by the payer (recipient `deed-preflight`) over `Preflight job / Deed / Payment / Request sha256` ([src/nep413.ts](../runtime/src/nep413.ts)) |
-| `POST /v1/jobs/:id/refund {refund_tx}` | records a refund after checking on chain that the operator sent at least the paid amount to the payer, after the payment, in a transfer not already used for another job |
-| `GET /v1/jobs?name=` | public job ledger (shown in the Deed page's **Jobs answered** tab) |
-| `GET /v1/config`, `GET /v1/health` | the published service config and its fingerprint |
+| `POST /v1/jobs {job_id, request}` | serve an escrowed job: the runtime reads `get_job(job_id)` on chain and serves only if it is pending, names this runtime, its `request_hash` equals sha256 of `request`, and the activation it was paid under is the current owner's; then settles or refunds it on chain |
+| `GET /v1/jobs?name=` | public job ledger, customers' transactions redacted (shown in the Deed page's **Jobs answered** tab) |
+| `POST /v1/owner/jobs {name, account_id, public_key, signature, issued_at}` | the full record for the holder: a NEP-413 signed message (recipient `deed-console`) by a full-access key of the current owner (or the live listing's seller), at most 10 minutes old ([src/owner.ts](../runtime/src/owner.ts)) |
+| `GET /v1/config`, `GET /v1/config/raw`, `GET /v1/health` | the published service config, its exact bytes (sha256 = the activated fingerprint) and health (`can_answer`, `can_settle`) |
 
-**Job rules** ([src/jobs.ts](../runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). A job is accepted only if the payer signed it (NEP-413, checked against their on-chain full-access keys, binding this payment to this exact request), the payment is final, went to this name, came from the caller, covers the activated price and is under 24 h old, **and** a fresh read shows the current registry owner signed an activation that names this runtime and this exact config fingerprint. If the name is sold mid-job, the job is still delivered once, and both owners are recorded. A payment made before the latest ownership change is refunded. One made after it but before the new owner switches on is held, then served when they do (refunded after 24 h). Failures refund; RPC trouble refuses. While a Deed is listed, the seller of the active listing counts as the owner, so the service keeps answering for them (those payments reach the seller at the sale). Owner, activation and last ownership change are read twice; if anything moved between the reads, nothing is recorded and the payer resubmits. On startup, any job left mid-answer by a crash becomes `refund_due`. Who owes what across a sale: [THREAT_MODEL.md](../THREAT_MODEL.md#who-owes-what-across-a-sale).
+**Job rules** ([src/jobs.ts](../runtime/src/jobs.ts), from THREAT_MODEL §D, written before the code). The money rules live in the contract: a job pays the name only if `settle_job` finds the job's owner still owns it, otherwise it is refunded, and anyone can refund it after 15 minutes. The runtime adds: serve only a pending job that names this runtime, whose request hash matches, and whose activation is the one a fresh owner read says is current (read twice; if anything moved between the reads, nothing is recorded); the signed model request names the Deed, job, runtime and config; one answer per job; failures refund on chain; RPC trouble refuses; a crash mid-answer is refunded on restart, and settlements interrupted by an RPC error are retried. While a Deed is listed, the seller of the live listing counts as the owner. Who owes what across a sale: [THREAT_MODEL.md](../THREAT_MODEL.md#who-owes-what-across-a-sale-contract-v3).
 
 **Verifiable answers** ([src/nearai.ts](../runtime/src/nearai.ts), [src/tee.ts](../runtime/src/tee.ts)): the model (`z-ai/glm-5.3-flash`, run by NEAR AI in a TEE) answers; the runtime fetches the enclave's signature over `model:sha256(request bytes):sha256(response bytes)`, re-hashes the exact bytes it sent and received, and recovers the secp256k1 (EIP-191) signer, then checks that signer is listed in NEAR AI's attestation report for the model (`/v1/attestation/report`, Intel TDX + NVIDIA evidence; cached 10 min). All three checks are stored with the job and shown on the page. **Trust boundary:** this proves signed inference by a provider-reported enclave key. We don't independently verify the TDX/NVIDIA quote chain, and the runtime's own logic (owner checks, ledger, refunds) runs on an ordinary server, not in a TEE. An authentic answer isn't necessarily a correct one.
 
@@ -193,9 +198,9 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 **How good are the flags?** [runtime/eval/RESULTS.md](../runtime/eval/RESULTS.md): 24 labelled transactions (safe / check / danger), `bun run eval`. The first run found real bugs (1 dangerous miss, 2 false alarms) that are fixed; the current 22/24 is optimistic because it's the same set the fixes were made on. An independent held-out set is still to do.
 
-**Agents and scripts** pay and ask in one command: `bun run ask --as <account.testnet> --runtime <url> --example approve` ([src/ask.ts](../runtime/src/ask.ts)) reads the price from the activation, pays the Deed, signs the job with `near message sign-nep413` and prints the answer with its enclave checks.
+**Agents and scripts** pay and ask in one command: `bun run ask --as <account.testnet> --example approve` ([src/ask.ts](../runtime/src/ask.ts)) reads the price and runtime URL from the activation, calls `pay_job`, reads the job id from the transaction, submits it and prints the answer with its enclave checks and settlement.
 
-**Refunds** ([src/refunds.ts](../runtime/src/refunds.ts)) come from the runtime operator's account, never the Deed (THREAT_MODEL decision 2). Dry run by default.
+**Refunds** are a contract call (`refund_job`), not an operator transfer: the payment never left the escrow.
 
 ---
 

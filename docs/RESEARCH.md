@@ -31,7 +31,7 @@ On every rotation (Sale, Transfer, Deposit, ReRent, Reclaim, Recovery):
 3. `rotation_seq += 1`.
 4. For Sale/Transfer/Reclaim/Recovery/Revert: payout account re-pointed to the new owner. "The payout account is read before it is repointed, so the balance goes to the holder giving the name up."
 5. For Sale/Transfer/Deposit/ReRent/Reclaim: `sweep_to(outgoing payout)` — the account's NEAR balance is swept to the **seller's** payout account in the same step (Revert/Recovery don't sweep).
-6. A 5-minute **Revert** window lets the authority undo the immediately preceding rotation (pinned to the previous owner; no sweep). **Our UX must treat a sale as final only after the revert window closes.**
+6. A 5-minute **Revert** window lets the authority undo the immediately preceding rotation (pinned to the previous owner; no sweep). **Our UX must treat a sale as final only after the revert window closes.** *(Corrected 2026-11-03 after reading the code: the deployed House of Stake code has no admin undo for a completed transfer; see EVIDENCE "Free rental (C7)". Contract v3 pays the seller in the sale transaction.)*
 ⇒ "The seller's old agent grant stops working after the sale" is enforced **by the audited wallet contract itself**, not by our runtime. Our harness proves it with direct on-chain calls.
 
 ### `tla-registry` transfers (contracts/tla-registry/src/marketplace.rs)
