@@ -2,43 +2,61 @@
 
 The detailed evidence behind the [README](../README.md). Every guarantee, whose code enforces it and where it's proven: [INVARIANTS.md](INVARIANTS.md). Threat model: [../THREAT_MODEL.md](../THREAT_MODEL.md). Free re-check of everything on this page against the chain: `python3 verify/check-testnet.py`.
 
-## Live sale on testnet: results
+## Live sale on testnet: results (contract v3)
 
-Run of [verify/testnet-sale.sh](../verify/testnet-sale.sh) on **2026-11-03 03:01 UTC**, name `preflight.deedbot.deedhq.testnet` (seller `maya.deedhq.testnet`, buyer `kofi.deedhq.testnet`, price 1 NEAR). Result: **ALL PASS**: 9/9 attack attempts rejected with the expected error. Seven were **transactions** (each linked, with the attacking account and method; the chain rejected the receipt), two were **view calls** that panicked (NEP-641 sign-in), and the rest are **state reads** (owner, balances, keys). This is one scripted, team-run scenario: a bounded test, not proof that every transfer is secure. Raw report: [verify/report-testnet.json](../verify/report-testnet.json). Earlier runs are kept unedited in [verify/runs/](../verify/runs/) (run 2 had one failing row, an outdated B3 check written for the pre-fix payout design; the contract behaved correctly). Attack tx hashes are looked up on chain by [verify/backfill-tx.py](../verify/backfill-tx.py), because near-cli-rs prints no tx id for failed transactions.
+Run of [verify/testnet-sale.sh](../verify/testnet-sale.sh) on **2026-11-04 19:41 UTC** against the v3 contract, name `preflight.deedbot.deedhq.testnet` (seller `kofi.deedhq.testnet`, buyer `maya.deedhq.testnet`, price 1 NEAR). Result: **ALL PASS** (37 steps).
 
-| Row | Step | Kind | Result (on-chain error for attacks) | Verdict | Transaction |
+- **Refusals: 10**, each with the exact expected error (8 rejected transactions, linked below and re-checked against the chain's error text by `check-testnet.py`; 2 refused NEP-641 sign-in view calls). After the sale the **old owner** tried 7 times (agent spend, co-owner spend, own spend, re-grant, sign-in, resell, switch back on); the others are a stranger trying to settle someone else's job (D8), the buyer trying to reuse an old activation version (D2) and, before the sale, the seller's agent trying to sign in as an owner (A5, a standing property).
+- **Job escrow on chain:** a job settled into the name's wallet (J1), a job paid while listed settled into the name (J3), a job paid before the sale refunded to the customer by the contract when the old runtime tried to settle it after the sale (J2).
+- **Seller paid in the sale transaction** (G5), plus money paid in while listed (B3); no waiting window.
+
+This is one scripted, team-run scenario: a bounded test, not proof that every transfer is secure. Raw report: [verify/report-testnet.json](../verify/report-testnet.json). Earlier runs are kept in [verify/runs/](../verify/runs/). Two v3 attempts just before this one failed only their job rows: the script attached 0.0499… NEAR (a float rounding of the 0.05 NEAR price) and the contract correctly refused; the script now passes the exact yoctoNEAR amount. The v2 run (with the old 5-minute window) is [verify/runs/2026-11-03-v2-run3-all-pass.json](../verify/runs/2026-11-03-v2-run3-all-pass.json). Refusal tx hashes are looked up by [verify/backfill-tx.py](../verify/backfill-tx.py), because near-cli-rs prints no tx id for failed transactions.
+
+| Row | Step | Kind | Result (on-chain error for refusals) | Verdict | Transaction |
 |---|---|---|---|---|---|
-| setup | The seller adds their AI agent as an extension | transaction | ok | PASS | [`CR2yYG8N…`](https://testnet.nearblocks.io/txns/CR2yYG8NELe4Zw5rEUe8Gt3rV2rFZ3B1o5B5VvdYtFC) |
-| setup | The seller adds a second co-owner (a hidden back door) | transaction | ok | PASS | [`2bPkGQER…`](https://testnet.nearblocks.io/txns/2bPkGQEREMwtAJgbXXHFieaTWMk3qeTxF9XmzWJx8zAL) |
-| setup | The seller grants their agent a capped spend (0.1 NEAR, to the seller only) | transaction | ok | PASS | [`2s6frdSD…`](https://testnet.nearblocks.io/txns/2s6frdSDCUoB3a3cLfMS2jvuZqkK9FbHF5eVDM1RXo1A) |
-| earn | A customer pays 0.1 NEAR into the name | transaction | ok | PASS | [`Hai8ysgG…`](https://testnet.nearblocks.io/txns/Hai8ysgGZwx1Z1rqYYXVVjmy88Dg1GfM9Dx8EndfKaNe) |
-| pre | The seller's agent spends within its grant | transaction | ok | PASS | [`1dEFEs4u…`](https://testnet.nearblocks.io/txns/1dEFEs4u8ChF4zT2yKaw5uUUPBMr6jTwjDUv7S9HXZu) |
+| setup | The seller adds their AI agent as an extension | transaction | ok | PASS | [`BGjaDS6J…`](https://testnet.nearblocks.io/txns/BGjaDS6JA3WvUNGMH4gcQisNjvjvP1F7HFur5S6kP6L4) |
+| setup | The seller adds a second co-owner (a hidden back door) | transaction | ok | PASS | [`AFhEakYx…`](https://testnet.nearblocks.io/txns/AFhEakYxDnZq2WsiL6bVjZj23mRyJqrwYZLJiFT5VMtb) |
+| setup | The seller grants their agent a capped spend (0.1 NEAR, to the seller only) | transaction | ok | PASS | [`H27Suuz8…`](https://testnet.nearblocks.io/txns/H27Suuz8B4tc65BVR8qJzT4ernZBaMM4F8yKV6ifCX1X) |
+| earn | A customer pays 0.1 NEAR into the name | transaction | ok | PASS | [`6puWm2PJ…`](https://testnet.nearblocks.io/txns/6puWm2PJRHusiuZHkQ8h8pRejSLV9aPiyA9tFu6Sonkw) |
+| pre | The seller's agent spends within its grant | transaction | ok | PASS | [`2ECxpS9x…`](https://testnet.nearblocks.io/txns/2ECxpS9xh44E3GmfavLz5a1wHxJuxy31WXrWMrE23LkS) |
+| job | A customer pays for a job: the Deed contract holds the payment | transaction | ok | PASS | [`9Vbh5pWg…`](https://testnet.nearblocks.io/txns/9Vbh5pWgfgUgeaxNmBtUvxNNR8LQ1ppho6NBMb9CuBqD) |
+| J1 | The runtime delivers and settles the job | transaction | ok | PASS | [`9xWvDeh4…`](https://testnet.nearblocks.io/txns/9xWvDeh4ACoY18nMEknnESJNWirdnamUiQPzjkWTSpNw) |
+| J1 | The job's payment landed in the name's own wallet (+0.05 NEAR) | state read | ok | PASS | — |
+| job | A customer pays for a second job (it will still be pending at the sale) | transaction | ok | PASS | [`5Jj2frVj…`](https://testnet.nearblocks.io/txns/5Jj2frVjnmvJHauCaLqMFaTB1QGLi2DNK5nujFZmx9SX) |
+| D8 | A stranger tries to settle someone else's job | transaction | panicked: only the runtime this job was paid to can settle it | PASS | [`rXxYWytT…`](https://testnet.nearblocks.io/txns/rXxYWytT5q1pB6MGJ9HsRLqxPvV2tMQRSY6TESoBSHq) |
 | pre | The seller can sign in as the name (NEP-641) | view call | ok | PASS | — |
-| A5 | The seller's agent tries to sign in as the name | view call | **blocked**: `panicked: a spend grantee cannot authorise as an owner` | PASS | — |
-| list | The seller lists: the name moves into the escrow | transaction | ok | PASS | [`BT5WAwu6…`](https://testnet.nearblocks.io/txns/BT5WAwu65umMzL14mMhFwF2WWuNToJXghk9wUmCWRhH3) |
-| B1 | The seller's earnings swept to the seller at listing (+0.0859 NEAR net of fees) | state read | ok | PASS | — |
-| earn | A customer pays 0.1 NEAR into the name while it is listed | transaction | ok | PASS | [`EdBuBTeh…`](https://testnet.nearblocks.io/txns/EdBuBTehdz5XFPTfxSwREMNNBuUzfPTMk9ZCTpDWgvSV) |
-| buy | The buyer pays exactly the price; the escrow hands them the name | transaction | ok | PASS | [`EnpYudm2…`](https://testnet.nearblocks.io/txns/EnpYudm2JJWHz5oeNrzj5yDfNChfcdJ3Pub6tbpfL7Uh) |
-| G5 | Registry says the buyer (kofi.deedhq.testnet) owns the name | state read | ok | PASS | — |
-| B3 | Money paid in while listed reached the seller at the sale (+0.1016 NEAR) | state read | ok | PASS | — |
-| A1 | The seller's agent tries to spend (`maya-agent.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-agent.deedhq.testnet' is not enabled` | PASS | [`HxNQgNef…`](https://testnet.nearblocks.io/txns/HxNQgNef9XyLeq6Wi4rmTz4tXwiFgid697tW7a6Z6u9F) |
-| A2 | The seller's hidden co-owner tries to move money (`maya-partner.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya-partner.deedhq.testnet' is not enabled` | PASS | [`5rAnst8X…`](https://testnet.nearblocks.io/txns/5rAnst8XaY5w9ZLP2M7ym2gS141SVcAYfNK5XnPgkC9o) |
-| A2 | The seller tries to move money themselves (`maya.deedhq.testnet` → `w_execute_extension`) | transaction | **blocked**: `panicked: extension 'maya.deedhq.testnet' is not enabled` | PASS | [`89D4CpB6…`](https://testnet.nearblocks.io/txns/89D4CpB6nXxGK7aQkm799oTfg4134fjqn2feUJjMmLTK) |
-| A3 | The seller tries to re-grant their agent (`maya.deedhq.testnet` → `hos_grant_spend`) | transaction | **blocked**: `panicked: only the owner may perform this operation` | PASS | [`5swvNdij…`](https://testnet.nearblocks.io/txns/5swvNdijTS51fyYop4ZEAL1zvpEpgePkBpyN4EU5a3ze) |
-| A4 | The seller tries to sign in as the name | view call | **blocked**: `panicked: named account is not an owner of this account` | PASS | — |
+| A5 | The seller's agent tries to sign in as the name | view call | wasm execution failed with error: HostError(GuestPanic { panic_msg: "a spend grantee cannot authorise as an owner" }) | PASS | — |
+| list | The seller lists: the name moves into the escrow | transaction | ok | PASS | [`9t7H5Jbc…`](https://testnet.nearblocks.io/txns/9t7H5Jbcj1oByzkXfwckM7S77bYpDunkdTNbku6xQ54o) |
+| B1 | The seller's earnings swept to the seller at listing (+0.1359 NEAR net of fees) | state read | ok | PASS | — |
+| earn | A customer pays 0.1 NEAR into the name while it is listed | transaction | ok | PASS | [`8C72BPGU…`](https://testnet.nearblocks.io/txns/8C72BPGUBdcT3H3fUiqC9jBEjy9afbZ1T5LAPPJTNyxg) |
+| job | While listed, a customer pays for a job (the seller's activation is still current) | transaction | ok | PASS | [`3GUtwRBo…`](https://testnet.nearblocks.io/txns/3GUtwRBoTvHdYosJFxDghprVkjG6SfYXje3VgjvVP2Qg) |
+| J3 | The runtime settles it while the Deed is listed | transaction | ok | PASS | [`Cx8XDr85…`](https://testnet.nearblocks.io/txns/Cx8XDr85oMujEzyXKpPveiSCzwHyVAi5ixGTNo6WTKaT) |
+| J3 | A job paid while listed is paid into the name (it reaches the seller at the sale, B3) | state read | ok | PASS | — |
+| buy | The buyer pays exactly the price; the escrow hands them the name | transaction | ok | PASS | [`AJmMehAC…`](https://testnet.nearblocks.io/txns/AJmMehACkQWuk9jR3bbmyaqfEQSh9H2gUabH4MsN8LiJ) |
+| G5 | Registry says the buyer (maya.deedhq.testnet) owns the name | state read | ok | PASS | — |
+| G5 | The seller was paid the price minus 2.5% royalty in the sale transaction (seller +1.1266 NEAR in total) | state read | ok | PASS | — |
+| B3 | Money paid in while listed also reached the seller at the sale (+0.1516 NEAR) | state read | ok | PASS | — |
+| G5 | The sale record is Paid (no waiting window) | state read | ok | PASS | — |
+| A1 | The seller's agent tries to spend | transaction | panicked: extension 'kofi-agent.deedhq.testnet' is not enabled | PASS | [`CJaQ1YLQ…`](https://testnet.nearblocks.io/txns/CJaQ1YLQWaqh6dn3Zh8dSHXx8dLJYjn9wJtUg12sPGSB) |
+| A2 | The seller's hidden co-owner tries to move money | transaction | panicked: extension 'kofi-partner.deedhq.testnet' is not enabled | PASS | [`6o7xjzyK…`](https://testnet.nearblocks.io/txns/6o7xjzyKoe6d3na2H6uvqqHSbFkdbqurLQ5k1Ysej6EQ) |
+| A2 | The seller tries to move money themselves | transaction | panicked: extension 'kofi.deedhq.testnet' is not enabled | PASS | [`AwkwwHoA…`](https://testnet.nearblocks.io/txns/AwkwwHoAaCwm9VeeMsK9kDf3gDracThGfnwQMSj89wyP) |
+| A3 | The seller tries to re-grant their agent | transaction | panicked: only the owner may perform this operation | PASS | [`GCJKcZrU…`](https://testnet.nearblocks.io/txns/GCJKcZrUKmeimhdgdDeNGvHnMhMPLgneoym35LFQfHcz) |
+| A4 | The seller tries to sign in as the name | view call | wasm execution failed with error: HostError(GuestPanic { panic_msg: "named account is not an owner of this account" }) | PASS | — |
 | A4 | The buyer can sign in as the name | view call | ok | PASS | — |
-| A6 | The seller tries to sell the name again (`maya.deedhq.testnet` → `transfer_sub_account`) | transaction | **blocked**: `panicked: {"code":"only_owner"}` | PASS | [`7KmgmY3P…`](https://testnet.nearblocks.io/txns/7KmgmY3PfLgtxw61iS43TDHG1NMpBaj6yB2Up1FARxWG) |
+| A6 | The seller tries to sell the name again | transaction | panicked: {"code":"only_owner"} | PASS | [`2rXCotiD…`](https://testnet.nearblocks.io/txns/2rXCotiDM8s4LoobUgaVfYPrDHmxA6LUMjzfZPckPwfZ) |
 | A7 | The name has 0 access keys: nobody can sign as it | state read | ok | PASS | — |
-| D2 | The seller tries to switch the service back on (`maya.deedhq.testnet` → `activate`) | transaction | **blocked**: `panicked: only the current owner of the name can activate it` | PASS | [`3igFiWEA…`](https://testnet.nearblocks.io/txns/3igFiWEAS5quztSSq1uxud6ujiYFtgQinabT5wWRV2va) |
+| D2 | The seller tries to switch the service back on | transaction | panicked: only the current owner of the name can activate it | PASS | [`6FUb3tce…`](https://testnet.nearblocks.io/txns/6FUb3tce7t4iETj42VLEymg9ktRLUCjtDCFEwHJ2KJad) |
+| J2 | The seller's runtime tries to settle a job paid before the sale | transaction | ok | PASS | [`3vL9G6zA…`](https://testnet.nearblocks.io/txns/3vL9G6zANs8YHJomtxBcMNBda2vDdTUt4EVEbwhmbCtK) |
+| J2 | …and the contract refunded the customer instead of paying the sold name | state read | ok | PASS | — |
+| D2 | The buyer tries to reuse an old activation version | transaction | panicked: version must be greater than 6 | PASS | [`53x2WoaT…`](https://testnet.nearblocks.io/txns/53x2WoaTwcUtnw5yfoEUvZcJnekcE6ZYdEgoxVBpJ1Kk) |
 | G1 | hos_agent_status: agent disabled, grant gone | state read | ok | PASS | — |
-| D2 | The buyer activates the service under their name | transaction | ok | PASS | [`7WHhr3Fm…`](https://testnet.nearblocks.io/txns/7WHhr3Fmao4V5nompXivtBcJkdHHjA1ucFb4mT9xx32o) |
-| C5 | The seller tries to take the money inside the 5-minute window (`maya.deedhq.testnet` → `claim_proceeds`) | transaction | **blocked**: `panicked: revert window still open; try again after final_after_ns` | PASS | [`2RsMf89f…`](https://testnet.nearblocks.io/txns/2RsMf89ffbBBhaiWAajNzotdqdxNyyCNq3R8tPR5oJMe) |
-| C5 | After the window, anyone triggers payment | transaction | ok | PASS | [`BuMALMxS…`](https://testnet.nearblocks.io/txns/BuMALMxSwuxXdormWXUSJye8nMBvUF7fvUH2kazbLupp) |
-| G5 | The seller received exactly price minus 2.5% royalty (0.975 NEAR) | state read | ok | PASS | — |
+| D2 | The buyer activates the service under their name | transaction | ok | PASS | [`amx9BJNW…`](https://testnet.nearblocks.io/txns/amx9BJNWbii9R3o3hWe8m3SccnXsxqsmyq5Ys6gYque) |
 
 ### Live Preflight jobs (NEAR testnet)
 
-Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by the runtime ([ledger snapshot](../verify/preflight-jobs-testnet.json); also on the Deed page's **Jobs answered** tab). "attested" = the recovered signer is listed in NEAR AI's attestation report for `z-ai/glm-5.3-flash` (Intel TDX quote + NVIDIA evidence).
+**Since contract v3** a job is paid into the Deed contract's escrow (`pay_job`) and settled or refunded by the contract. First v3 job: [`Hppo221e…`](https://testnet.nearblocks.io/txns/Hppo221erbcxT7UfP8ebP5AF3qis7bsWfQCRugAp2Mji) (`pay_job`, job 1) → answered with all three enclave checks → settled into the name's wallet by the runtime's limited key in [`HbG8dD5t…`](https://testnet.nearblocks.io/txns/HbG8dD5tEoqNEgYJKCpyaDTmXHGEjExSWFHa4nLFuQf2). The live sale above settles and refunds more jobs on chain.
+
+**Before v3** (the table below), customers paid the name directly and refunds were transfers from the operator, each recorded with its tx. Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by the runtime ([ledger snapshot](../verify/preflight-jobs-testnet.json); also on the Deed page's **Jobs answered** tab). "attested" = the recovered signer is listed in NEAR AI's attestation report for `z-ai/glm-5.3-flash` (Intel TDX quote + NVIDIA evidence).
 
 | Payment | Transaction asked about (high-risk flags) | Accepted under | Result | Enclave signature |
 |---|---|---|---|---|
@@ -59,7 +77,7 @@ Real payments of 0.05 NEAR from `maya.deedhq.testnet` to the Deed, answered by t
 
 ## Testing strategy
 
-Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 39 tests with in-memory chain and model fakes so every ordering of "payment / sale / activation / answer" can be forced):
+Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 39 tests against an in-memory model of the v3 contract, so every ordering of "payment / sale / activation / answer / settlement" can be forced):
 
 1. **Mock registry** ([escrow.rs](../contract/deed/tests/escrow.rs)): fast, and lets us force what real contracts won't (transfer failure, a name reverted to the escrow, FT-blocked listing).
 2. **Mainnet bytecode in a sandbox** ([real_fleet.rs](../contract/deed/tests/real_fleet.rs)): deploys the whole House of Stake fleet from the exact mainnet `.wasm` (hash-asserted), the same way [deploy/testnet.sh](../deploy/testnet.sh) does, rents a name, adds an agent and a hidden co-owner, sells, then attacks from the seller's side. Uses the real **300 Tgas** transaction cap.
@@ -69,7 +87,7 @@ Contract and sale: three layers, each closer to reality (the runtime adds a four
 
 ## Bugs our tests caught
 
-- **Payment theft (D6), found in external review.** The runtime trusted `{payment_tx, sender}` from the caller, so anyone who saw a public payment could submit it first with their own question. Each job is now signed by the payer (NEP-413) and checked against the payer's on-chain keys.
+- **Payment theft (D6), found in external review.** The runtime trusted `{payment_tx, sender}` from the caller, so anyone who saw a public payment could submit it first with their own question. Each job was then signed by the payer (NEP-413); since v3 the payment itself is a `pay_job` call that binds the payer and the request hash on chain.
 - **Free rental (C7), found while answering review.** v1's `claim_proceeds` treated "the escrow owns the name again" as a House of Stake revert and refunded the buyer, but a buyer could create that state by sending the name back. Reading House of Stake's code showed no admin undo exists for a completed transfer, so the seller is now always paid; the case is tested on the real bytecode.
 
 - **Two processes, one ledger.** The refund tool recorded a refund while the runtime server held an older in-memory copy of the job ledger that it would have written back. The store now re-reads the file on every operation and writes atomically.
