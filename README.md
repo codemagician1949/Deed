@@ -114,6 +114,7 @@ ERC-6551 gives each NFT a separate account whose control follows the token; on N
 ## Libraries, AI-written code and baseline
 
 - **Baseline:** everything in this repository was built during the hackathon window, from 2026-11-02 (first commit). No pre-hackathon code of ours.
+- **Tags (Q-003):** `pre-hackathon` marks the first commit ([9aab65e](https://github.com/codemagician1949/Deed/commit/9aab65e)); `hackathon-submission` will mark the final frozen commit. Everything built during the hackathon: [pre-hackathon...hackathon-submission](https://github.com/codemagician1949/Deed/compare/pre-hackathon...hackathon-submission) (this link works once the final tag is added).
 - **Third-party code deployed unmodified:** House of Stake [`tla-contracts`](https://github.com/houseofstake/tla-contracts) mainnet bytecode (registry and recovery at commit `bf0b65d`, the rest at `0925e0f`), fetched from mainnet and vendored in [deploy/mainnet-wasm](deploy/mainnet-wasm/) with its hashes.
 - **Libraries:** Rust `near-sdk` 5.30, `near-workspaces` 0.24; Bun runtime with `@noble/curves`, `@noble/hashes`; web: React 19, Vite, Tailwind 4, shadcn/ui (Base UI), motion, react-router, `@hot-labs/near-connect`. Services: NEAR RPC and FastNEAR APIs, NEAR AI Cloud. Tools: cargo-near 0.22, near-cli-rs 0.30.
 - **AI-assisted development (Q-005):** the code, tests, scripts and docs were written with an AI coding assistant (Claude Code), directed and reviewed by the team.
