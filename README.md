@@ -24,6 +24,7 @@
 git clone https://github.com/codemagician1949/Deed && cd Deed
 python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app   # ~30 s, no wallet, no NEAR
 contract/test.sh                          # ~5 min: 24 tests (21 in a local NEAR sandbox, 4 of those on House of Stake mainnet bytecode)
+python3 verify/recompute-title.py --compare  # ~1 min: recomputes the title page's numbers from chain data (jobs and sales cross-checked against contract state) and compares with the page's own code
 verify/rebuild-deed.sh                    # ~5 min, needs Docker: rebuilds the deployed Deed contract from the commit in its NEP-330 metadata and compares the hash
 cd runtime && bun install && bun test     # seconds: 39 tests (escrowed job rules, settle/refund on chain, sale mid-job, crash recovery, TEE signature, risk flags)
 ```
@@ -98,8 +99,8 @@ After a sale:
 | Model verdicts | The model once answered a full-access-key request (flagged high) with "CHECK FIRST". The final verdict is now the stricter of the model's and the flags', applied in code next to the unchanged signed text |
 
 **Done since the first review:** on-chain job escrow (refunds no longer depend on the operator), the runtime's URL recorded in the activation, the seller paid in the sale transaction, a signed holder sign-in for the console's job record.
-**Also done:** the deployed Deed contract is a reproducible build (`verify/rebuild-deed.sh`, also in CI); a buyer always gets at least 30 days of lease or a refund; NEAR AI's TDX and GPU attestation is verified independently by the checker.
-**Roadmap:** a script that recomputes every title-page number from chain data; an outside buyer running their own runtime.
+**Also done:** the deployed Deed contract is a reproducible build (`verify/rebuild-deed.sh`, also in CI); the title page's numbers are recomputed from chain data (`verify/recompute-title.py`); a buyer always gets at least 30 days of lease or a refund; NEAR AI's TDX and GPU attestation is verified independently by the checker.
+**Roadmap:** an outside buyer running their own runtime; a held-out, outsider-labelled risk-flag set.
 
 ---
 
