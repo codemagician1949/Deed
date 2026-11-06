@@ -89,8 +89,26 @@ After a sale:
 ### E. Lies about the track record
 | # | Attack | What stops it | Proven by |
 |---|---|---|---|
-| E1 | A inflates earnings with self-payments | Every payment and settlement links to its tx; payments from the team's own accounts are labelled "our demo". Self-payments from an unknown account can't be told apart from a real customer; the page says so | partial: the web app labels the team's `*.deedhq.testnet` accounts "our demo"; a recompute script is roadmap |
+| E1 | A inflates earnings with self-payments | Every payment and settlement links to its tx; payments from the team's own accounts are labelled "our demo". Self-payments from an unknown account can't be told apart from a real customer; the page says so | the web app labels the team's `*.deedhq.testnet` accounts "our demo"; `verify/recompute-title.py --compare` re-derives the page's numbers from chain data with independent code and cross-checks jobs and sales against contract state |
 | E2 | Fake "served" results | Each served job carries NEAR AI's enclave signature over `<model>:<sha256 request>:<sha256 response>`; the signed request names the Deed, the on-chain job id, the runtime and the config, so an answer can't be passed off as another job's. Settlement records sha256 of the answer on chain | runtime/test/crypto-risk.test.ts "TEE signature check"; runtime test "the signed request names the Deed, the on-chain job, this runtime and the config" |
+
+### F. Agents that pay (Preflight's counterparty check; contracts `agent-vault` and `reports`)
+
+An agent pays from its own vault account. Its **only key is a function-call key on the vault, for `pay`** (no full-access key). Attackers here are a prompt injection, a compromised agent, a drainer, and someone abusing the blocklist.
+
+| # | Attack | What stops it | Proven by |
+|---|---|---|---|
+| F1 | A prompt injection makes the agent pay a reported drainer | The wrapper asks `/v1/check` before signing and refuses on **block** (reported by a reporter the vault trusts, or by ≥ `min_reporters` distinct reporters) | `runtime/agent/demo.ts` step 3 (log in verify/runs/); runtime tests "block: reported by a reporter the vault trusts…" |
+| F2 | The agent is fully compromised and skips the wrapper | `agent-vault.pay` reads the blocklist itself and panics `BLOCKED` before any transfer; the vault, not the agent, holds the money | agent-vault sandbox test (step 3); demo step 4 (failed tx on testnet) |
+| F3 | The agent's key is used for anything else (plain transfer, the owner's methods, another contract, adding a key) | Protocol: a function-call key can call only `pay` on the vault, can't attach a deposit, and can't sign transfers or key changes; refused before any contract code runs | agent-vault sandbox test (step 5); demo steps 5a–5c |
+| F4 | The agent overspends (many small payments, or one big one) | `per_payment_cap` and `daily_budget` checked in `pay` and **re-checked in the callback that commits**, so two payments in flight can't both pass; a failed transfer gives the budget back | agent-vault unit tests `per_payment_cap_holds`, `daily_budget_holds`; sandbox test (step 4); demo step 5d |
+| F5 | The agent raises its own limits or trusts a different reporter | Owner methods require the owner account and 1 yoctoNEAR (a function-call key can't attach it) | agent-vault unit test `the_agent_cant_raise_its_own_limits`; sandbox test (step 5) |
+| F6 | A stranger reports an honest account to block it for every agent | Reports need a 0.1 NEAR bond and evidence; one per reporter; a single untrusted report is only a **warn**; blocking needs a reporter the vault's owner trusts or `min_reporters` distinct reporters (3); the reported account can attach a public dispute | reports unit tests; agent-vault sandbox test (step 2); runtime test "one untrusted report is a warn" |
+| F7 | A drainer disputes its own reports to get unblocked | A dispute is shown, never unblocks; only the vault owner's explicit `allow_receiver` overrides | agent-vault sandbox test (step 6) |
+| F8 | The check can't read the chain (RPC down, blocklist unreadable) | The wrapper treats unreachable or unreadable as **warn** and asks a human, never as allow; the vault refuses to pay if it can't read the blocklist | runtime test "fails toward caution"; `on_status` panics "couldn't read the blocklist" |
+| F9 | A look-alike name, a brand-new account, or a contract whose code just changed | **warn** with the reason: account doesn't exist, created in the last 7 days, code hash differs from 7 days ago (archival RPC), very little activity, or first payment at or above 0.5 NEAR (newness and low activity are only notes once this agent has paid the receiver before) | runtime tests for each; demo steps 1, 2 |
+
+Not covered: an agent tricked into paying an account nobody has reported yet, which is new, active and passes every check. The wrapper then allows payments up to the cap and the budget, and those limits bound the loss. A trusted reporter that lies can block an honest account for the vaults that trust it, but not for other vaults.
 
 ## Residual risks (stated plainly)
 - House of Stake is a trusted authority: it can reclaim expired names and run recovery, and it could upgrade its contracts. Deed doesn't remove that trust.
