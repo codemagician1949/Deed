@@ -1,0 +1,38 @@
+# Clean clone of github.com/codemagician1949/Deed at 269a9bf (public HEAD), with contract/test.sh from the next commit
+# (it fetches the pinned NEAR sandbox itself; the old script's near-workspaces download failed here: 'failed to unpack Darwin-arm64/near-sandbox')
+# machine: Darwin arm64, 2026-11-06T15:48Z
+$ contract/test.sh
+Fetching NEAR sandbox 2.14.0 (Darwin-arm64)…
+     Running unittests src/lib.rs (target/debug/deps/deed-e5a6105dc956ffaa)
+test tests::splits_names_under_account_tlas ... ok
+test tests::splits_tla_names ... ok
+test tests::rejects_bare_names - should panic ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/escrow.rs (target/debug/deps/escrow-9cbefaf6e4f47929)
+test activation_requires_current_owner ... ok
+test buyer_can_relist_right_after_the_sale ... ok
+test buyer_refunded_when_the_lease_is_about_to_end ... ok
+test buyer_cannot_return_the_name_for_a_refund ... ok
+test forced_transfer_failure_refunds_buyer ... ok
+test ft_balance_blocks_listing ... ok
+test failed_payout_repoint_stops_the_sale_and_refunds_the_buyer ... ok
+test full_sale_seller_locked_out_and_paid_at_once ... ok
+test name_moved_outside_the_escrow_refunds_pending_jobs ... ok
+test job_refunds_never_depend_on_the_operator ... ok
+test job_payment_is_held_then_settled_into_the_names_wallet ... ok
+test royalty_capped_at_ten_percent ... ok
+test runtime_url_is_recorded_with_the_activation ... ok
+test only_seller_cancels_and_bad_msg_returns_name ... ok
+test name_reverted_to_escrow_after_sale_seller_still_paid_buyer_recovers_name ... ok
+test sale_in_the_middle_of_a_paid_job_refunds_the_payer ... ok
+test wrong_price_and_stale_listing_rejected ... ok
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.48s
+     Running tests/real_fleet.rs (target/debug/deps/real_fleet-3be79c795819dc46)
+test failed_transfer_refunds_buyer_on_real_bytecode ... ok
+test onward_transfer_right_after_the_sale_on_real_bytecode ... ok
+test buyer_returning_the_name_gets_no_refund_on_real_bytecode ... ok
+test sale_on_real_hos_bytecode_locks_the_seller_out ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.07s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+contract/test.sh  64.34s user 17.58s system 73% cpu 1:51.19 total
+exit 0

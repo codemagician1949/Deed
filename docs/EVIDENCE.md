@@ -93,6 +93,12 @@ The same flow done by hand in Chrome with [Meteor Wallet](https://wallet.meteorw
 - **Lease (C9):** `buy` refuses and refunds a purchase with under 30 days of lease left (contract v3.2, test `buyer_refunded_when_the_lease_is_about_to_end`).
 - **Monitoring:** the daily CI check now fails if the runtime can't answer or settle, if NEAR AI refused its last call for credit or auth, or if the settle key's gas allowance runs low.
 
+### Clean-clone runs (2026-11-06)
+
+- `contract/test.sh` from a fresh clone: **24 tests pass in 1 min 51 s** ([log](../verify/runs/2026-11-06-clean-clone-contract-tests.log)). The first attempt failed the way reviewers saw: near-workspaces could not download and unpack the NEAR sandbox. `test.sh` now fetches the same pinned sandbox binary itself (with retries) and points `NEAR_SANDBOX_BIN_PATH` at it.
+- `verify/rebuild-deed.sh` in GitHub Actions from a fresh checkout: rebuilt hash `4TM4z2E1…` = the code on chain ([log](../verify/runs/2026-11-06-ci-rebuild-deed.log), [run](https://github.com/codemagician1949/Deed/actions/runs/42206333663)). A local clean-clone rebuild on this machine failed only on crate-download timeouts inside the container.
+- `verify/recompute-title.py --compare`: the title page's four headline numbers recomputed from chain data by independent code match the page's own loader; settled jobs and sales match contract state.
+
 ## Testing strategy
 
 Contract and sale: three layers, each closer to reality (the runtime adds a fourth, [runtime/test](../runtime/test/): 39 tests against an in-memory model of the v3 contract, so every ordering of "payment / sale / activation / answer / settlement" can be forced):

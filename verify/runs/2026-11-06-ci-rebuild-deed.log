@@ -1,0 +1,18 @@
+# verify/rebuild-deed.sh in GitHub Actions (ubuntu-latest, fresh checkout)
+# https://github.com/codemagician1949/Deed/actions/runs/42206333663 (job: deployed Deed contract = rebuilt from its source commit)
+deed.deedhq.testnet: code hash 4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg, built from commit 1f280630a4b8c61bd4477fcabbc17a228b08d45b
+  image   sourcescan/cargo-near:0.21.1-rust-1.96.0@sha256:ccb22bb4e677ed022d8b9d1aa1b32f0af52dd0471ef1c32e48dedbf68ee6ee17
+  command cargo near build non-reproducible-wasm --locked --no-abi
+warn: this might cause rustup commands to take longer time to finish than expected
+• Checking that specified image is available...
+• Running build in docker command step...
+ │     Finished `release` profile [optimized] target(s) in 20.50s
+• Running an optimize for size post-step with wasm-opt --enable-nontrapping-float-to-int --enable-bulk-memory...
+     -                Binary: /home/near/code/contract/target/near/deed/deed.wasm
+Here is the console command if you ever need to re-run it again:
+cargo near build non-reproducible-wasm --locked --no-abi
+     -                Binary: /home/runner/.cache/deed-rebuild.sv8UHW/src/contract/target/near/deed/deed.wasm
+Here is the console command if you ever need to re-run it again:
+cargo near build reproducible-wasm
+rebuilt from source: 4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg
+PASS the deployed Deed contract is exactly commit 1f280630a4b8c61bd4477fcabbc17a228b08d45b
