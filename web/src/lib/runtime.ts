@@ -114,6 +114,21 @@ export function serviceChecks(
   if (activation?.runtime_url) checks.unshift({ label: "Its address is the one recorded on chain", ok: strip(activation.runtime_url) === strip(url) })
   return checks
 }
+export type Verdict = "allow" | "warn" | "block"
+export interface CounterpartyCheck {
+  verdict: Verdict
+  reasons: { code: string; verdict: Verdict; account?: string; message: string; source: string }[]
+  counterparties: { account: string; exists: boolean | null; is_contract: boolean | null; existed_7d_ago: boolean | null; tx_count: number | null; prior_from_agent: number | null; reports: { reporter: string; reason: string; evidence: string }[] }[]
+  policy: { trusted_reporters: string[]; min_reporters: number; source: string }
+  reports_contract: string
+  checked_at: string
+}
+/** Free counterparty check (runtime/src/counterparty.ts): allow / warn / block for whoever this transaction pays. */
+export const counterpartyCheck = (tx: ProposedTx, agentId?: string) =>
+  call<CounterpartyCheck & { error?: string }>("/v1/check", { method: "POST", body: JSON.stringify({ tx, agent_id: agentId || undefined }) }).then((r) => {
+    if (r.status !== 200) throw new Error(r.body.error ?? `HTTP ${r.status}`)
+    return r.body
+  })
 export const riskPreview = (request: ProposedTx) =>
   call<{ flags: RiskFlag[] }>("/v1/flags", { method: "POST", body: JSON.stringify({ request }) }).then((r) => r.body.flags)
 /** sha256 (hex) of JSON.stringify(request): what pay_job binds the payment to (runtime/src/jobs.ts requestHash). */
@@ -149,7 +164,12 @@ export const jobsSnapshot = (name: string) =>
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no snapshot"))))
     .then((s: { taken_at: string; jobs: Job[] }) => ({ takenAt: s.taken_at, jobs: s.jobs.filter((j) => j.name === name) }))
 
-export const EXAMPLES: { label: string; tx: ProposedTx }[] = [
+const vaultPay = (to: string, yocto: string, memo: string): ProposedTx => ({
+  receiver_id: CONFIG.agentVault,
+  actions: [{ type: "FunctionCall", params: { methodName: "pay", args: { receiver_id: to, amount: yocto, memo }, gas: "100000000000000", deposit: "0" } }],
+})
+
+export const EXAMPLES: { label: string; tx: ProposedTx; agent?: string }[] = [
   {
     label: "Send 5 NEAR to a friend",
     tx: { receiver_id: "friend.testnet", actions: [{ type: "Transfer", params: { deposit: "5000000000000000000000000" } }] },
@@ -172,4 +192,10 @@ export const EXAMPLES: { label: string; tx: ProposedTx }[] = [
       actions: [{ type: "FunctionCall", params: { methodName: "nft_transfer_call", args: { receiver_id: "market.testnet", token_id: "42", msg: "{\"price\":\"1\"}" }, gas: "100000000000000", deposit: "1" } }],
     },
   },
+  ...(CONFIG.agentVault
+    ? [
+        { label: "Agent pays a look-alike from a tampered invoice", tx: vaultPay(`mayastudio-billing.${CONFIG.root}`, "400000000000000000000000", "invoice 1043"), agent: CONFIG.agentVault },
+        { label: "Agent pays its usual vendor", tx: vaultPay(`maya.${CONFIG.root}`, "100000000000000000000000", "invoice 1044"), agent: CONFIG.agentVault },
+      ]
+    : []),
 ]

@@ -16,6 +16,9 @@ export const CONFIG = {
   mainnetCodeHashes: testnet.mainnetCodeHashes as Record<string, string>,
   /** Known runtimes: runtime_id (as named in a Deed's activation) → URL. A buyer running their own adds theirs. */
   runtimes: ((testnet as { runtimes?: Record<string, string> }).runtimes ?? {}) as Record<string, string>,
+  /** The demo agent's vault (contract/agent-vault) and the shared blocklist (contract/reports). */
+  agentVault: (testnet as { agentVault?: string }).agentVault ?? "",
+  reports: (testnet as { reports?: string }).reports ?? "",
 }
 
 /** Accounts our own scripts use. Payments from these are labelled "our demo", everything else "outside account" (not proof of independent demand). */
