@@ -203,9 +203,9 @@ if runtime:
             u = ((a or {}).get("runtime_url") or "").rstrip("/")
             if u and u != runtime.rstrip("/") and a["owner"] == t["owner_id"]:
                 others.setdefault(u, (t["token_id"], a))
-        for u, (name, a) in sorted(others.items()):
-            print(f"\n== 4b. Runtime of {name} ({a['runtime_id']})")
-            check_runtime(u, a, name)
+        for u, (other, a) in sorted(others.items()):
+            print(f"\n== 4b. Runtime of {other} ({a['runtime_id']})")
+            check_runtime(u, a, other)
     except Exception as e:
         check(False, f"other runtimes: {e}")
 
@@ -217,9 +217,30 @@ if DEP.get("deedCodeHash"):
     except Exception as e:
         check(False, f"deed code hash: {e}")
 
+def verify_tdx(quote_hex, post_ua):
+    """Verify an Intel TDX quote. Preferred: locally with dcap-qvl (pip install dcap-qvl), fetching the
+    collateral straight from Intel's PCS, so no third-party verifier is trusted. Fallback when dcap-qvl isn't
+    installed: Phala's hosted verifier. Returns (verified, report_data_hex, how)."""
+    raw = bytes.fromhex(quote_hex.removeprefix("0x"))
+    try:
+        import asyncio, inspect, dcap_qvl
+    except ImportError:
+        tdx = post_ua("https://cloud-api.phala.network/api/v1/attestations/verify", {"hex": quote_hex})
+        rd = str(tdx.get("quote", {}).get("body", {}).get("reportdata", "")).lower().removeprefix("0x")
+        return tdx.get("quote", {}).get("verified") is True, rd, "DCAP via Phala's hosted verifier; pip install dcap-qvl to verify locally"
+    res = dcap_qvl.get_collateral_and_verify(raw, dcap_qvl.INTEL_PCS_URL)
+    if inspect.isawaitable(res):
+        res = asyncio.run(res)
+    j = json.loads(res.to_json())
+    body = next(iter(j["report"].values()))
+    status = j.get("status")
+    # UpToDate is the only fully clean TCB status; anything else is reported, not hidden.
+    return status == "UpToDate", str(body.get("report_data", "")).lower(), f"locally with dcap-qvl, Intel PCS collateral: TCB {status}{', advisories ' + ', '.join(j['advisory_ids']) if j.get('advisory_ids') else ''}"
+
+
 if runtime:
     # Independent check of NEAR AI's enclave claims, with a fresh nonce so the evidence can't be replayed:
-    # the Intel TDX quote (verified by a public DCAP verifier) and the NVIDIA GPU evidence (verified by
+    # the Intel TDX quote (verified locally with dcap-qvl against Intel's collateral) and the NVIDIA GPU evidence (verified by
     # NVIDIA's own attestation service) must both carry our nonce, and the TDX report data must bind the
     # model's signing address, the same address that signed the answers the runtime served.
     print("\n== 6. NEAR AI enclave attestation (fresh nonce, verified independently)")
@@ -236,9 +257,8 @@ if runtime:
         m = next(a for a in rep_ai["model_attestations"] if a.get("model_name") == model)
         addr = m["signing_address"].lower().removeprefix("0x")
         check(m.get("request_nonce") == nonce, f"report for {model} answers our nonce {nonce[:12]}…")
-        tdx = post_ua("https://cloud-api.phala.network/api/v1/attestations/verify", {"hex": m["intel_quote"]})
-        rd = str(tdx.get("quote", {}).get("body", {}).get("reportdata", "")).lower().removeprefix("0x")
-        check(tdx.get("quote", {}).get("verified") is True, "Intel TDX quote verified (DCAP, Intel collateral, via Phala's public verifier)")
+        verified, rd, how = verify_tdx(m["intel_quote"], post_ua)
+        check(verified, f"Intel TDX quote verified ({how})")
         check(rd == addr + "0" * 24 + nonce, f"TDX report data = signing address 0x{addr[:10]}… + our nonce (the key lives in that enclave, and the quote is fresh)")
         nv = post_ua("https://nras.attestation.nvidia.com/v3/attest/gpu", json.loads(m["nvidia_payload"]))
         claims = json.loads(base64.urlsafe_b64decode(nv[0][1].split(".")[1] + "=="))

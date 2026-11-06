@@ -82,6 +82,7 @@ jobs:
     # Reads public testnet RPCs: if they are down, this fails and says so.
     steps:
       - uses: actions/checkout@v4
+      - run: pip install dcap-qvl==0.7.1   # verify the TDX quote locally against Intel's collateral
       - run: python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app
 
   reproducible-deed:
