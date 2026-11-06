@@ -21,6 +21,11 @@ export const CONFIG = {
   rpc: process.env.RPC ?? deploy.rpc,
   txApi: process.env.TX_API ?? "https://tx.test.fastnear.com",
   registry: deploy.registry as string,
+  /** Archival RPC (the counterparty check reads accounts as they were 7 days ago). */
+  archivalRpc: process.env.ARCHIVAL_RPC ?? (deploy.archivalRpc as string) ?? "https://archival-rpc.testnet.fastnear.com",
+  /** Shared blocklist contract, and the reporters trusted when the caller isn't an agent-vault. */
+  reports: deploy.reports as string,
+  trustedReporters: (deploy.trustedReporters as string[]) ?? [],
   /** The team account that deployed this replica (its runtime is the hosted one). */
   root: deploy.root as string,
   deed: deploy.deed as string,

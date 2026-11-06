@@ -13,6 +13,7 @@ import { recoverInterrupted, retryOnChain, submitJob, type Deps, type Job } from
 import { aiStatus, nearAi } from "./nearai"
 import { verifyOwner } from "./owner"
 import { riskFlags } from "./risk"
+import { checkCounterparty, liveSources } from "./counterparty"
 import { fileStore } from "./store"
 import { publicJob } from "./public"
 
@@ -36,6 +37,8 @@ const deps: Deps = {
   configHash: CONFIG_HASH,
   now: () => Date.now(),
 }
+
+const counterpartySources = liveSources({ rpc: CONFIG.rpc, archival: CONFIG.archivalRpc, txApi: CONFIG.txApi, reports: CONFIG.reports })
 
 const cors = {
   "access-control-allow-origin": "*",
@@ -79,6 +82,21 @@ const server = Bun.serve({
       } catch {
         return json(400, { error: "Body must be JSON: {request: {receiver_id, actions[]}}." })
       }
+    }
+    if (url.pathname === "/v1/check" && req.method === "POST") {
+      // Free counterparty check for agents that pay: allow / warn / block with reasons, from live chain data.
+      let body: { tx?: unknown; agent_id?: string }
+      try {
+        body = (await req.json()) as typeof body
+      } catch {
+        return json(400, { error: "Body must be JSON: {tx: {receiver_id, actions[]}, agent_id?}." })
+      }
+      const tx = body.tx as { receiver_id?: unknown; actions?: unknown } | undefined
+      if (!tx || typeof tx.receiver_id !== "string" || !Array.isArray(tx.actions)) return json(400, { error: "tx must be {receiver_id, actions[]} (the transaction the agent is about to sign)." })
+      if (body.agent_id !== undefined && (typeof body.agent_id !== "string" || body.agent_id.length > 64)) return json(400, { error: "agent_id must be the agent's account id." })
+      if (!CONFIG.reports) return json(503, { error: "This runtime has no blocklist contract configured (deploy/testnet.json reports)." })
+      const result = await checkCounterparty(counterpartySources, tx as never, body.agent_id, { trustedReporters: CONFIG.trustedReporters })
+      return json(200, { ...result, checked_at: new Date().toISOString(), reports_contract: CONFIG.reports })
     }
     if (url.pathname === "/v1/jobs" && req.method === "POST") {
       let body: unknown
