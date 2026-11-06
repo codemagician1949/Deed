@@ -11,12 +11,12 @@ Checks:
      matches the report, and every rejected one failed with the exact error the report expects.
      Then a few facts are re-read live: the old owner still can't sign in as the name (NEP-641), the old
      agent is still disabled, and the listing's sweep event paid the seller (G3).
-  4. Optionally, the hosted Preflight runtime is up; the sha256 of the raw config bytes it serves equals
+  4. Optionally, the hosted Preflight runtime is up (and every other runtime an activated Deed names); the sha256 of the raw config bytes it serves equals
      the fingerprint it reports, the Deed's on-chain activation, and runtime/preflight.config.json here.
      The deployed Deed contract's code hash equals the one recorded at deploy (deploy/testnet.json).
 Exit code = number of failed checks.
 """
-import base64, hashlib, json, os, sys, urllib.parse, urllib.request
+import base64, hashlib, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEP = json.load(open(os.path.join(ROOT, "deploy", "testnet.json")))
@@ -36,9 +36,19 @@ def b58(b):
     return s
 
 
-def post(url, body):
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"content-type": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=30))
+def post(url, body, tries=4):
+    # Retry transient network errors (connection resets, timeouts, 429/5xx); a real refusal still fails.
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"content-type": "application/json"})
+            return json.load(urllib.request.urlopen(req, timeout=30))
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 502, 503, 504) or i == tries - 1:
+                raise
+        except (urllib.error.URLError, TimeoutError, OSError):
+            if i == tries - 1:
+                raise
+        time.sleep(2 + i)
 
 
 def rpc(url, method, params):
@@ -152,8 +162,8 @@ if seller and agent:
         to = [d.get("to") or d.get("payout_account") or d.get("receiver_id") for e in swept for d in (e["data"] if isinstance(e["data"], list) else [e["data"]])]
         check(seller in to, f"G3    the listing's sweep event paid the seller ({', '.join(str(x) for x in to) or 'no sweep event'})")
 
-if runtime:
-    print("\n== 4. Hosted Preflight runtime")
+def check_runtime(runtime, act, name):
+    """Health, monitoring and config checks for one hosted runtime, against the activation of the Deed it serves."""
     try:
         base = runtime.rstrip("/")
         h = json.load(urllib.request.urlopen(base + "/v1/health", timeout=30))
@@ -174,12 +184,30 @@ if runtime:
         served = hashlib.sha256(raw).hexdigest()
         local = hashlib.sha256(open(os.path.join(ROOT, "runtime", "preflight.config.json"), "rb").read()).hexdigest()
         check(served == h["config_hash"] == local, f"sha256 of the config bytes it serves ({served[:12]}…) = what it reports = runtime/preflight.config.json here")
-        check(act is not None and served == act["config_hash"], "…and = the fingerprint in the Deed's on-chain activation")
+        check(act is not None and served == act["config_hash"], f"…and = the fingerprint in {name}'s on-chain activation")
         check(h["runtime_id"] == (act or {}).get("runtime_id"), f"activation names this runtime ({h['runtime_id']})")
         if act and act.get("runtime_url"):
             check(act["runtime_url"].rstrip("/") == base, f"activation's on-chain runtime_url = {act['runtime_url']}")
     except Exception as e:
         check(False, f"runtime: {e}")
+
+
+if runtime:
+    print("\n== 4. Hosted Preflight runtime")
+    check_runtime(runtime, act, "preflight." + DEP["tla"])
+    # Every other activated Deed that names a different hosted runtime (e.g. the second Deed on its own runtime).
+    try:
+        others = {}
+        for t in view(TESTNET, DEP["registry"], "nft_tokens", {"from_index": "0", "limit": 50}) or []:
+            a = view(TESTNET, DEP["deed"], "get_activation", {"token_id": t["token_id"]})
+            u = ((a or {}).get("runtime_url") or "").rstrip("/")
+            if u and u != runtime.rstrip("/") and a["owner"] == t["owner_id"]:
+                others.setdefault(u, (t["token_id"], a))
+        for u, (name, a) in sorted(others.items()):
+            print(f"\n== 4b. Runtime of {name} ({a['runtime_id']})")
+            check_runtime(u, a, name)
+    except Exception as e:
+        check(False, f"other runtimes: {e}")
 
 if DEP.get("deedCodeHash"):
     print("\n== 5. Deployed Deed contract")

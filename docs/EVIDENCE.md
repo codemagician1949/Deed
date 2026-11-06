@@ -93,6 +93,15 @@ The same flow done by hand in Chrome with [Meteor Wallet](https://wallet.meteorw
 - **Lease (C9):** `buy` refuses and refunds a purchase with under 30 days of lease left (contract v3.2, test `buyer_refunded_when_the_lease_is_about_to_end`).
 - **Monitoring:** the daily CI check now fails if the runtime can't answer or settle, if NEAR AI refused its last call for credit or auth, or if the settle key's gas allowance runs low.
 
+### A second Deed on a second runtime (2026-11-06)
+
+A second Deed with its own runtime, key and ledger, to show the service is bound to the name, not to one server. **Both runtimes are run by the team**; this is not an outside operator.
+
+- Maya rented `sentinel.deedbot.deedhq.testnet` ([`3n6NgRhi…`](https://testnet.nearblocks.io/txns/3n6NgRhi572mST7hKyW8TMxngjqbuWfmtTQyBGckAV43)) and switched it on ([`8SKZRM7x…`](https://testnet.nearblocks.io/txns/8SKZRM7xEGiVPe7WgRazUBAax6MZkNGNHBGNu2P6Nif7), activation v1) naming runtime `deed-ops2.testnet` at `https://preflight-2-production.up.railway.app`, with the same public config fingerprint `678ff1f4…`.
+- `deed-ops2.testnet` is a separate account whose only key on the runtime is a function-call key (`ed25519:3sdShHVn…`) limited to `settle_job`/`refund_job` on the Deed contract. It is a separate Railway service with its own volume, so its job ledger starts empty and shares nothing with the first runtime's.
+- A customer (`amara-deed.testnet`) paid 0.05 NEAR into the escrow ([`A2VJgfrB…`](https://testnet.nearblocks.io/txns/A2VJgfrBSbUR8bHPMoMyXadxzVTEfrL82KzAxanA6eHR), job 9); runtime 2 answered it (full-access key → **DO NOT SIGN**, all three enclave checks) and settled it into the sentinel name with its own key ([`7WSNdKYY…`](https://testnet.nearblocks.io/txns/7WSNdKYYSmDpweyT3gDUiLtxCAZs6aUFhh2NnxUMV1u), signer `deed-ops2.testnet`).
+- Each runtime refuses jobs paid to the other (`jobs.ts`: "Job … was paid to runtime …, not this one"). `verify/check-testnet.py` now checks every runtime that an activated Deed names (§4b), and `verify/recompute-title.py sentinel.deedbot.deedhq.testnet --compare` matches the page (0.05 NEAR, 1 payment, 0 misuse attempts, 1 owner).
+
 ### Clean-clone runs (2026-11-06)
 
 - `contract/test.sh` from a fresh clone: **24 tests pass in 1 min 51 s** ([log](../verify/runs/2026-11-06-clean-clone-contract-tests.log)). The first attempt failed the way reviewers saw: near-workspaces could not download and unpack the NEAR sandbox. `test.sh` now fetches the same pinned sandbox binary itself (with retries) and points `NEAR_SANDBOX_BIN_PATH` at it.

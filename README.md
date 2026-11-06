@@ -94,12 +94,13 @@ After a sale:
 | Preflight runtime: escrowed jobs settled or refunded on chain with a key limited to those two methods, per-job owner check, NEAR AI verifiable inference with the enclave signature checked, a holder-only job record behind a signed sign-in | **Live** (Railway); settled and refunded jobs on testnet |
 | Web app on live chain data: title page with full history, proof page, market, owner console, Try Preflight | **Live** (Vercel) |
 | Wallet actions in the browser (buy, list, cancel, activate with a runtime URL, pay a job into the escrow, holder sign-in) | **Built**, tested with Meteor Wallet on testnet; the scripted live sale was signed from the CLI, and no outside person has used it yet |
+| A second Deed on a second runtime with its own key and ledger | **Done, team-run**: `sentinel.deedbot.deedhq.testnet` served and settled by `deed-ops2.testnet` ([evidence](docs/EVIDENCE.md#a-second-deed-on-a-second-runtime-2026-11-06)) |
 | A buyer running their own runtime | **Supported, not yet demonstrated** by someone outside the team ([runbook](docs/BUYER-RUNBOOK.md)) |
 | Risk-flag accuracy | 22/24 on the team's own set, which the fixes were tuned on, so optimistic ([results](runtime/eval/RESULTS.md)). A held-out harness that refuses to run until an outsider's labels are frozen in git is ready ([how](runtime/eval/HELDOUT.md)); the set itself isn't written yet |
 | Model verdicts | The model once answered a full-access-key request (flagged high) with "CHECK FIRST". The final verdict is now the stricter of the model's and the flags', applied in code next to the unchanged signed text |
 
 **Done since the first review:** on-chain job escrow (refunds no longer depend on the operator), the runtime's URL recorded in the activation, the seller paid in the sale transaction, a signed holder sign-in for the console's job record.
-**Also done:** the deployed Deed contract is a reproducible build (`verify/rebuild-deed.sh`, also in CI); the title page's numbers are recomputed from chain data (`verify/recompute-title.py`); a buyer always gets at least 30 days of lease or a refund; NEAR AI's TDX and GPU attestation is verified independently by the checker.
+**Also done:** the deployed Deed contract is a reproducible build (`verify/rebuild-deed.sh`, also in CI); the title page's numbers are recomputed from chain data (`verify/recompute-title.py`); a buyer always gets at least 30 days of lease or a refund; NEAR AI's TDX and GPU attestation is verified independently by the checker; a second Deed runs on a second, separately keyed runtime (both team-run).
 **Roadmap:** an outside buyer running their own runtime; a held-out, outsider-labelled risk-flag set.
 
 ---
