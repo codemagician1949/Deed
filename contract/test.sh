@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 [ -f ../deploy/mainnet-wasm/hos_wallet.wasm ] && [ -f ../deploy/mainnet-wasm/mpc_recovery.wasm ] || ../deploy/fetch-mainnet-wasm.sh
-for c in deed mock-registry; do (cd "$c" && cargo near build non-reproducible-wasm --no-abi); done
+for c in deed mock-registry reports agent-vault; do (cd "$c" && cargo near build non-reproducible-wasm --no-abi); done
 
 # The sandbox tests need a NEAR sandbox node. near-workspaces' own download/unpack step fails in some
 # clean environments, so fetch the same pinned binary ourselves (with retries) and point
@@ -31,4 +31,4 @@ if [ -z "${NEAR_SANDBOX_BIN_PATH:-}" ]; then
   export NEAR_SANDBOX_BIN_PATH="$DIR/near-sandbox"
 fi
 
-cargo test -p deed -- --test-threads=4
+cargo test -p deed -p reports -p agent-vault -- --test-threads=4

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["deed", "mock-registry"]
+members = ["deed", "mock-registry", "reports", "agent-vault"]
 
 [workspace.dependencies]
 near-sdk = "5.30.0"
