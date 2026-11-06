@@ -161,7 +161,7 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 | Method | Who | What |
 |---|---|---|
-| `new(registry, royalty_account, royalty_bps ≤ 1000, revert_window_ns?, job_timeout_ns?)` | deployer | init; job timeout defaults to 15 min. On testnet `royalty_account` = `deedhq.testnet` (the team), 250 bps |
+| `new(registry, royalty_account, royalty_bps ≤ 1000, job_timeout_ns?)` | deployer | init; job timeout defaults to 15 min. On testnet `royalty_account` = `deedhq.testnet` (the team), 250 bps |
 | `migrate(job_timeout_ns?)` | the contract itself (deploy + init in one tx) | v2 → v3 state migration, keeps every activation, listing and sale ([deploy/upgrade-v3.sh](../deploy/upgrade-v3.sh)) |
 | `activate(token_id, runtime_id, config_hash, price_yocto, version, runtime_url?)` | current owner | reads `nft_token` cross-contract; records only if caller == owner and version > the name's high-water mark |
 | `pay_job(token_id, request_hash)` | anyone | payable, exact activated price; returns the job id; holds the money |
@@ -170,11 +170,10 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 | `nft_on_transfer(sender_id, previous_owner_id, token_id, msg)` | registry only | records a listing `{price_yocto}`; returns `true` (give back) for bad msg, already listed, or unsettled previous sale. State only: the registry gives it 25 Tgas |
 | `buy(token_id, expected_price, listing_nonce)` | anyone but the seller | payable, exact price, ≥ 260 Tgas; reads the lease and refunds if it ends within 30 days (C9), then re-points payout to seller, then transfers the name and pays the seller + royalty; refunds on any failure |
 | `recover_name(token_id)` | anyone | a name back in the escrow after its sale goes back to that sale's buyer (≥ 280 Tgas) |
-| `claim_proceeds(sale_id)` | anyone | only for sales made before v3 (which had a waiting window) |
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
-| views | anyone | `get_activation` (incl. `runtime_url`), `get_version_floor` (the version a new activation must exceed; kept across sales), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry`, `get_revert_window_ns` |
+| views | anyone | `get_activation` (incl. `runtime_url`), `get_version_floor` (the version a new activation must exceed; kept across sales), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry` |
 
-**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; older: `returned_to_buyer_listing`, `claim_retry`, `sale_reverted_refunded` (v1).
+**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; in older history only: `returned_to_buyer_listing`, `claim_retry` (v2, before v3.3 removed `claim_proceeds`), `sale_reverted_refunded` (v1).
 
 ---
 
