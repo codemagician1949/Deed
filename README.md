@@ -22,7 +22,8 @@
 
 ```bash
 git clone https://github.com/codemagician1949/Deed && cd Deed
-python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app   # ~30 s, no wallet, no NEAR
+pip install dcap-qvl==0.7.1               # optional: verifies the Intel TDX quote locally (without it the checker asks Phala's hosted verifier)
+python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app   # ~1-3 min, no wallet, no NEAR
 contract/test.sh                          # ~2-5 min (fetches the NEAR sandbox itself): 24 tests (21 in a local NEAR sandbox, 4 of those on House of Stake mainnet bytecode)
 python3 verify/recompute-title.py --compare  # ~1 min: recomputes the title page's numbers from chain data (jobs and sales cross-checked against contract state) and compares with the page's own code
 verify/rebuild-deed.sh                    # ~5 min, needs Docker: rebuilds the deployed Deed contract from the commit in its NEP-330 metadata and compares the hash
@@ -39,9 +40,9 @@ cd runtime && bun install && bun test     # seconds: 39 tests (escrowed job rule
 | Escrowed jobs in that sale | 3 paid into the contract: 2 settled into the name, 1 (paid before the sale) refunded to the customer on chain | same |
 | Contract tests | 24: 17 against a mock registry (forced failures), 4 on House of Stake mainnet bytecode, 3 unit | [contract/deed/tests/](contract/deed/tests/) |
 | Threat-model rows | 34, each naming its test, or "no test" | [THREAT_MODEL.md](THREAT_MODEL.md) |
-| Paid Preflight jobs on testnet | escrowed jobs from v3 (above, plus [the first](docs/EVIDENCE.md#live-preflight-jobs-near-testnet)); before v3: 8 jobs, 4 answered with signature checks, 4 refunded | [docs/EVIDENCE.md](docs/EVIDENCE.md#live-preflight-jobs-near-testnet) |
+| Paid Preflight jobs on testnet | **9** escrowed jobs since v3 (read from contract state): 8 settled into the name, 1 refunded on chain; 8 for `preflight…` on runtime 1, 1 for `sentinel…` on runtime 2. Before v3: 8 jobs, 4 answered with signature checks, 4 refunded | [docs/EVIDENCE.md](docs/EVIDENCE.md#live-preflight-jobs-near-testnet) |
 
-All live activity so far is between the team's own testnet accounts (Kofi, Maya). It shows the mechanism works, not that anyone else wants it.
+All live activity so far is between the team's own testnet accounts (Kofi, Maya, the customer Amara and the two runtime accounts). It shows the mechanism works, not that anyone else wants it.
 
 ---
 
@@ -53,7 +54,7 @@ All live activity so far is between the team's own testnet accounts (Kofi, Maya)
 | The public record (sales, payments, blocked attempts, answered jobs) | The seller's knowledge (nothing secret is kept in the config) |
 | The right to switch the service on and choose **which runtime** serves it (`runtime_id` + config fingerprint in the activation) | Jobs paid before the sale: the contract refunds them, they never pay the buyer's name |
 
-Today one operator (`deedhq.testnet`) runs Preflight for every Deed. A buyer can run their own copy ([runtime/Dockerfile](runtime/Dockerfile), own `RUNTIME_ID` and NEAR AI key) and activate it; the old operator is then **no longer the authorised runtime**. An honest runtime refuses on its own. A dishonest one could still answer, but it can't be paid: job money sits in the Deed contract, and only the runtime named in the job can settle it, into the name's wallet, after the contract re-checks the owner. Clients also check that the on-chain activation names that runtime, URL and config, and that the answer carries a valid enclave signature: [docs/CLIENTS.md](docs/CLIENTS.md). The 2.5% resale royalty goes to the team (`deedhq.testnet`), fixed at contract init.
+Today two team-run runtimes serve Preflight: `deedhq.testnet` for `preflight.deedbot.deedhq.testnet` and `deed-ops2.testnet` for `sentinel.deedbot.deedhq.testnet`, each with its own settle key and job ledger. A buyer can run their own copy ([runtime/Dockerfile](runtime/Dockerfile), own `RUNTIME_ID` and NEAR AI key) and activate it; the old operator is then **no longer the authorised runtime**. An honest runtime refuses on its own. A dishonest one could still answer, but it can't be paid: job money sits in the Deed contract, and only the runtime named in the job can settle it, into the name's wallet, after the contract re-checks the owner. Clients also check that the on-chain activation names that runtime, URL and config, and that the answer carries a valid enclave signature: [docs/CLIENTS.md](docs/CLIENTS.md). The 2.5% resale royalty goes to the team (`deedhq.testnet`), fixed at contract init.
 
 ---
 
@@ -88,7 +89,7 @@ After a sale:
 
 | Part | Status |
 |---|---|
-| Threat model written before code; `deed` contract v3 (activation with runtime URL, sale escrow, **job escrow**, capped royalty, NEP-297 events), upgraded in place with `migrate` | **Done, deployed on testnet** |
+| Threat model written before code; `deed` contract v3.3 (activation with runtime URL, sale escrow, **job escrow**, capped royalty, NEP-297 events), upgraded in place with `migrate` | **Done, deployed on testnet** |
 | Sale and job escrow tested in a sandbox on the **exact House of Stake mainnet bytecode** (4 tests) + 17 escrow edge-case tests with forced failures; deployed contract rebuilt reproducibly from source in CI | **Passing in CI** (plus a daily read-only re-check of the live testnet deployment) |
 | A real Deed sold live on testnet with the seller's attacks run on chain | **Done**, [results](docs/EVIDENCE.md) |
 | Preflight runtime: escrowed jobs settled or refunded on chain with a key limited to those two methods, per-job owner check, NEAR AI verifiable inference with the enclave signature checked, a holder-only job record behind a signed sign-in | **Live** (Railway); settled and refunded jobs on testnet |
