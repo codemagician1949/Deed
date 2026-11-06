@@ -149,6 +149,10 @@ Top Level Accounts has **no House of Stake deployment on testnet**. To stay on t
 | `deedbot.deedhq.testnet` | registrar for our TLA | `DavYBFdXPsa9qa6QEyiaUxodV6pax2y8Sp3XoriCNj3t` | mainnet registrar (same) |
 | `rec.deedhq.testnet` | `mpc-recovery` (watchers: random keys) | `HgacdGnQfkZ68W43VuqL9uZbY5JUXL2Gt9hrTWYU3eXw` | `rec.hos` (same) |
 | `deed.deedhq.testnet` | **Deed contract** | see [deploy/testnet.json](../deploy/testnet.json) | n/a |
+| `reports.deedhq.testnet` | **shared blocklist** ([contract/reports](../contract/reports/src/lib.rs)) | see deploy/testnet.json | n/a |
+| `agent-vault.deedhq.testnet` | **an agent's wallet** ([contract/agent-vault](../contract/agent-vault/src/lib.rs)); owner `amara-deed.testnet`; the agent's only key: function-call, `pay` | see deploy/testnet.json | n/a |
+| `watchdog.deedhq.testnet` | the reporter the vault trusts (team-run) | no code | n/a |
+| `mayastudio-billing…`, `drainer-demo…`, `victim-demo…`, `new-vendor-demo.deedhq.testnet` | **staged** demo accounts for the counterparty check | no code | n/a |
 
 Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet account can't own a short top-level name like `.bot`). Mainnet source commits (from each contract's `contract_source_metadata`): registry and recovery `bf0b65d`, extension, registrar, wallet and deployer `0925e0f` of [houseofstake/tla-contracts](https://github.com/houseofstake/tla-contracts). Reproduce: [deploy/fetch-mainnet-wasm.sh](../deploy/fetch-mainnet-wasm.sh) then [deploy/testnet.sh](../deploy/testnet.sh).
 
@@ -173,7 +177,11 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
 | views | anyone | `get_activation` (incl. `runtime_url`), `get_version_floor` (the version a new activation must exceed; kept across sales), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry` |
 
-**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; in older history only: `returned_to_buyer_listing`, `claim_retry` (v2; v3.3 removed `claim_proceeds`), `sale_reverted_refunded` (v1).
+**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`
+
+`reports` ([contract/reports/src/lib.rs](../contract/reports/src/lib.rs)): `new(bond_yocto)`; `report(account_id, reason, evidence)` payable, exactly the bond (0.1 NEAR on testnet), one per reporter per account, at most 25 per account; `withdraw(account_id)` returns your bond; `dispute(statement)` by the reported account (shown, never unblocks); views `get_bond`, `get_status(account_id) → {reports[], dispute}`. Events (`standard: "deed_reports"`): `reported`, `withdrawn`, `disputed`. It only records; each reader applies its own rule.
+
+`agent-vault` ([contract/agent-vault/src/lib.rs](../contract/agent-vault/src/lib.rs)): `new(owner, reports, per_payment_cap, daily_budget, trusted_reporters, min_reporters)`; `pay(receiver_id, amount, memo)` by the vault account itself (the agent's function-call key) or the owner: checks the caps and the balance left after storage, reads `reports.get_status`, then in the callback panics `BLOCKED: …` for a receiver reported by a trusted reporter or by ≥ `min_reporters` reporters (unless the owner allowed it), re-checks the caps, transfers, and gives the budget back if the transfer fails. Owner only, 1 yocto: `set_limits`, `set_reporters`, `allow_receiver(account_id, allowed)`, `withdraw(amount)`. Views `get_config`, `is_allowed`. Events (`standard: "deed_agent_vault"`): `payment_sent`, `payment_failed`., `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; in older history only: `returned_to_buyer_listing`, `claim_retry` (v2; v3.3 removed `claim_proceeds`), `sale_reverted_refunded` (v1).
 
 ---
 
@@ -183,6 +191,7 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 
 | Endpoint | What |
 |---|---|
+| `POST /v1/check {tx, agent_id?}` | counterparty check for agents that pay, free: `verdict` allow / warn / block, `reasons[]` (code, verdict, account, message, source), the signals per counterparty (exists, contract, existed 7 days ago, code changed, tx count, prior transactions from this agent, reports, dispute) and the policy used (the agent-vault's trusted reporters if `agent_id` is one) ([src/counterparty.ts](../runtime/src/counterparty.ts)) |
 | `POST /v1/flags {request}` | deterministic risk flags, free ([src/risk.ts](../runtime/src/risk.ts): full-access keys, account deletion, contract deploys, unlimited approvals, large values, asset moves, unusual receivers…) |
 | `POST /v1/jobs {job_id, request}` | serve an escrowed job: the runtime reads `get_job(job_id)` on chain and serves only if it is pending, names this runtime, its `request_hash` equals sha256 of `request`, and the activation it was paid under is the current owner's; then settles or refunds it on chain |
 | `GET /v1/jobs?name=` | public job ledger, customers' transactions redacted (shown in the Deed page's **Jobs answered** tab) |
@@ -231,11 +240,14 @@ contract/
   deed/tests/escrow.rs       10 sandbox tests vs the mock registry (forced failures, name returned to escrow, pricing)
   deed/tests/real_fleet.rs   full sale vs House of Stake MAINNET bytecode, 19 checks, 300 Tgas cap
   mock-registry/             test-only registry stand-in
+  reports/                   shared blocklist (bonded reports with evidence, disputes)
+  agent-vault/               an agent's wallet: function-call key for pay, caps, on-chain blocklist check; tests/sandbox.rs
   test.sh                    build + run everything
 deploy/
   fetch-mainnet-wasm.sh      download House of Stake mainnet bytecode (read-only)
   testnet.sh                 deploy replica + deed to testnet (hash-checked, idempotent)
   seed-testnet.sh            demo seller/buyer, rent, activate
+  agent-guard.sh             deploy the blocklist, the vault, the agent's key and the staged demo accounts
   testnet.json               deployed account ids + hashes
 verify/
   testnet-sale.sh            live sale + attack matrix on testnet
@@ -244,6 +256,8 @@ verify/
   runs/                      earlier live reports, kept unedited
 runtime/                     the Preflight service (Bun): job rules, NEAR AI inference + signature check, refunds
   preflight.config.json      the public service config; its sha256 is the activation fingerprint
+  src/counterparty.ts        POST /v1/check (allow/warn/block)
+  agent/guard.ts, demo.ts    the agent-side wrapper and the injected-agent demo
 web/                         the web app
 docs/                        EVIDENCE.md, INVARIANTS.md, research (verified facts with source refs), spike results, track prompt, rules
 .github/workflows/ci.yml     contract suite, runtime tests, web build, live read-only check
