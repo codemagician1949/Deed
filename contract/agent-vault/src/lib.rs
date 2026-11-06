@@ -137,7 +137,10 @@ impl AgentVault {
         require!(amount <= self.per_payment_cap, format!("over the per-payment cap of {} yoctoNEAR", self.per_payment_cap));
         let spent = self.spent_now();
         require!(spent + amount <= self.daily_budget, format!("over today's budget: {} of {} yoctoNEAR already spent", spent, self.daily_budget));
-        require!(env::account_balance().as_yoctonear() >= amount, "the vault doesn't hold that much");
+        // NEAR locked for the contract's own storage can't be paid out.
+        let locked = env::storage_byte_cost().as_yoctonear() * env::storage_usage() as u128;
+        let available = env::account_balance().as_yoctonear().saturating_sub(locked);
+        require!(available >= amount, format!("the vault has {available} yoctoNEAR available after storage; top it up"));
     }
 
     /// The agent's one action. Callable by the vault account itself (the agent's function-call key)
@@ -309,6 +312,19 @@ mod tests {
         v.spent_today = NEAR / 2 + 1;
         vault_ctx("vault.testnet".parse().unwrap());
         let _ = v.pay(accounts(3), U128(NEAR / 2), String::new());
+    }
+
+    #[test]
+    #[should_panic(expected = "available after storage")]
+    fn storage_reserve_is_not_spendable() {
+        let mut v = vault();
+        testing_env!(VMContextBuilder::new()
+            .current_account_id("vault.testnet".parse().unwrap())
+            .predecessor_account_id("vault.testnet".parse().unwrap())
+            .account_balance(NearToken::from_millinear(300))
+            .storage_usage(20_000) // 0.2 NEAR locked
+            .build());
+        let _ = v.pay(accounts(3), U128(NEAR / 5), String::new());
     }
 
     #[test]
