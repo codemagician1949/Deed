@@ -17,9 +17,9 @@
     "impl.hos (hos-wallet)": "6d1FsQEpwVpgxALg4kCffXX45qujTL41bQSpWEHFoQ4o",
     "rec.hos (mpc-recovery)": "HgacdGnQfkZ68W43VuqL9uZbY5JUXL2Gt9hrTWYU3eXw"
   },
-  "deedCodeHash": "4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg",
+  "deedCodeHash": "5L5QNCoxF4NmYJCr6XhsD9QALmP9zttr9eDa6P2hm8ho",
   "runtimes": {
     "deedhq.testnet": "https://preflight-production-8802.up.railway.app"
   },
-  "deedVersion": "v3.2"
+  "deedVersion": "v3.3"
 }

@@ -88,7 +88,7 @@ The same flow done by hand in Chrome with [Meteor Wallet](https://wallet.meteorw
 
 ### Checks added 2026-11-06
 
-- **Reproducible contract:** `deed.deedhq.testnet` now runs code hash `4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg`, built with `cargo near build reproducible-wasm` in the pinned `sourcescan/cargo-near` image from commit `1f28063` (its NEP-330 `contract_source_metadata` says so). `verify/rebuild-deed.sh` rebuilt it from a fresh clone and got the same hash; CI repeats this.
+- **Reproducible contract:** `deed.deedhq.testnet` ran code hash `4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg` (v3.2; now v3.3 `5L5QNCox…` from commit `a1f6ebf`, same procedure), built with `cargo near build reproducible-wasm` in the pinned `sourcescan/cargo-near` image from commit `1f28063` (its NEP-330 `contract_source_metadata` says so). `verify/rebuild-deed.sh` rebuilt it from a fresh clone and got the same hash; CI repeats this.
 - **Attestation, independently:** `verify/check-testnet.py` §6 fetched NEAR AI's report with a fresh nonce; the Intel TDX quote verified (public DCAP verifier) with report data = signing address `0x3b753b44…` + our nonce, NVIDIA's service returned overall `true` for 8 GPUs with our nonce, and that address is the signer recorded on the served answers.
 - **Lease (C9):** `buy` refuses and refunds a purchase with under 30 days of lease left (contract v3.2, test `buyer_refunded_when_the_lease_is_about_to_end`).
 - **Monitoring:** the daily CI check now fails if the runtime can't answer or settle, if NEAR AI refused its last call for credit or auth, or if the settle key's gas allowance runs low.

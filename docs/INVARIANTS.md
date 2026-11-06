@@ -1,6 +1,6 @@
 # Invariants: what is guaranteed, by whose code, proven where
 
-Contract `deed` v3.2 (deployed on testnet as `deed.deedhq.testnet`, code hash `4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg`, built reproducibly from commit `1f28063` as its NEP-330 metadata states; `verify/rebuild-deed.sh` rebuilds it and compares). v3.1 added the `get_version_floor` view and v3.2 the lease check in `buy` (C9); the scripted live sale ran on v3 (`EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`). Stored state is unchanged across these.
+Contract `deed` v3.3 (deployed on testnet as `deed.deedhq.testnet`, code hash `5L5QNCoxF4NmYJCr6XhsD9QALmP9zttr9eDa6P2hm8ho`, built reproducibly from commit `a1f6ebf` as its NEP-330 metadata states; `verify/rebuild-deed.sh` rebuilds it and compares). v3.1 added the `get_version_floor` view, v3.2 the lease check in `buy` (C9), v3.3 removed the pre-v3 claim step (`claim_proceeds`, `get_revert_window_ns`); the scripted live sale ran on v3 (`EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`). Stored state is unchanged across these.
 
 Legend for **Proven on**:
 - **Real** = local NEAR sandbox running House of Stake's **mainnet bytecode** (hash-checked) + `deed` ([contract/deed/tests/real_fleet.rs](../contract/deed/tests/real_fleet.rs))

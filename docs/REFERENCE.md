@@ -173,7 +173,7 @@ Names under the replica look like `<label>.deedbot.deedhq.testnet` (a testnet ac
 | `cancel(token_id)` | seller | 1 yocto, ≥ 230 Tgas; returns the name |
 | views | anyone | `get_activation` (incl. `runtime_url`), `get_version_floor` (the version a new activation must exceed; kept across sales), `get_job`, `get_job_timeout_ns`, `get_listing`, `get_listings`, `get_sale`, `get_latest_sale`, `get_royalty`, `get_registry` |
 
-**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; in older history only: `returned_to_buyer_listing`, `claim_retry` (v2, before v3.3 removed `claim_proceeds`), `sale_reverted_refunded` (v1).
+**Events (NEP-297, `standard: "deed"`, `version: "1.0.0"`):** `activated`, `listed`, `list_rejected`, `sold`, `sale_failed_refunded`, `proceeds_paid`, `name_recovered`, `cancelled`, `cancel_failed`, `job_paid`, `job_settled`, `job_refunded`, `job_settle_retry`; in older history only: `returned_to_buyer_listing`, `claim_retry` (v2; v3.3 removed `claim_proceeds`), `sale_reverted_refunded` (v1).
 
 ---
 
