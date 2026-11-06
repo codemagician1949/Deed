@@ -22,7 +22,9 @@ ONCHAIN=$(q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"re
 echo "$DEED: code hash $ONCHAIN, built from commit $REV"
 echo "$META" | python3 -c 'import sys,json;b=json.load(sys.stdin)["build_info"];print("  image  ", b["build_environment"]);print("  command", " ".join(b["build_command"]))'
 
-WORK=$(mktemp -d "${TMPDIR:-$HOME/.cache}/deed-rebuild.XXXXXX")
+# The build container must see this folder: on macOS (Colima/Docker Desktop) only $HOME is shared.
+BASE=${TMPDIR:-$HOME/.cache}; mkdir -p "$BASE"
+WORK=$(mktemp -d "$BASE/deed-rebuild.XXXXXX"); chmod 777 "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 git clone -q https://github.com/codemagician1949/Deed "$WORK/src"
 git -C "$WORK/src" checkout -q "$REV"
