@@ -58,6 +58,13 @@ describe("counterparty check", () => {
     expect(r.reasons.map((x) => x.code)).toContain("new_account")
   })
 
+  test("a new account the agent already paid is only a note, not a warn", async () => {
+    const world = { "new.testnet": { now: NONE, ago: null, txs: [{ hash: "p1", signer: false }] }, "vault.testnet": { now: CODE, ago: CODE, txs: vaultTxs } }
+    const r = await checkCounterparty(fake(world), pay("new.testnet", 1n) as never, "vault.testnet", DEF)
+    expect(r.verdict).toBe("allow")
+    expect(r.reasons.find((x) => x.code === "new_account")?.verdict).toBe("allow")
+  })
+
   test("warn: contract code changed in the last 7 days", async () => {
     const r = await checkCounterparty(fake({ "dex.testnet": { now: CODE, ago: "Cold1111111111111111111111111111", txs: old(50) } }), { receiver_id: "dex.testnet", actions: [{ type: "FunctionCall", params: { methodName: "swap", args: {}, gas: "1", deposit: "0" } }] } as never, undefined, DEF)
     expect(r.reasons.map((x) => x.code)).toContain("code_changed")

@@ -11,7 +11,8 @@
 //
 // Rule (same as the agent-vault contract for the blocklist part):
 //   block  reported by a trusted reporter, or by >= minReporters distinct reporters; or any high flag
-//   warn   new (< 7 days), code changed < 7 days ago, little activity, named account that doesn't exist,
+//   warn   new (< 7 days) or little activity (both only notes once this agent has paid the receiver before),
+//          code changed < 7 days ago, named account that doesn't exist,
 //          reported below the block rule or disputed, first payment to this receiver at or above the
 //          first-payment threshold, any medium flag, or a signal we couldn't read (fail toward caution)
 //   allow  otherwise
@@ -161,9 +162,12 @@ export function judge(signals: Signals[], flags: RiskFlag[], amount: bigint, pol
       if (!IMPLICIT.test(a)) r.push({ code: "no_such_account", verdict: "warn", account: a, message: `${a} doesn't exist. A payment to it fails and comes back; a typo or a look-alike name is likely.`, source: "RPC view_account" })
       else r.push({ code: "fresh_implicit", verdict: "warn", account: a, message: `${a} is an implicit address nobody has used yet.`, source: "RPC view_account" })
     } else if (s.exists === null) r.push({ code: "unreadable", verdict: "warn", account: a, message: `Couldn't read ${a} from the chain; treat it as unchecked.`, source: "RPC view_account" })
-    if (s.exists && s.existed_7d_ago === false) r.push({ code: "new_account", verdict: "warn", account: a, message: `${a} was created in the last 7 days.`, source: "archival RPC view_account 7 days ago" })
+    // Newness and low activity matter less once this agent has done business with the receiver.
+    const known = (s.prior_from_agent ?? 0) > 0
+    const soft: Verdict = known ? "allow" : "warn"
+    if (s.exists && s.existed_7d_ago === false) r.push({ code: "new_account", verdict: soft, account: a, message: `${a} was created in the last 7 days.`, source: "archival RPC view_account 7 days ago" })
     if (s.exists && s.existed_7d_ago && s.code_changed_7d) r.push({ code: "code_changed", verdict: "warn", account: a, message: `${a}'s contract code changed in the last 7 days (code hash now ${s.code_hash?.slice(0, 10)}…). Approvals or calls that were safe last week may not be.`, source: "archival RPC view_account: code hash 7 days ago vs now" })
-    if (s.exists && s.tx_count !== null && s.tx_count < policy.lowActivityTxs) r.push({ code: "low_activity", verdict: "warn", account: a, message: `${a} has only ${s.tx_count} transaction(s) in its history.`, source: "FastNEAR account index" })
+    if (s.exists && s.tx_count !== null && s.tx_count < policy.lowActivityTxs) r.push({ code: "low_activity", verdict: soft, account: a, message: `${a} has only ${s.tx_count} transaction(s) in its history.`, source: "FastNEAR account index" })
     if (s.prior_from_agent === 0 && amount >= policy.firstPaymentWarnYocto && amount > 0n)
       r.push({ code: "first_payment", verdict: "warn", account: a, message: `This agent has never transacted with ${a}, and this sends ${(Number(amount / 10n ** 21n) / 1000).toString()} NEAR.`, source: "FastNEAR account index (agent's signed transactions ∩ receiver's)" })
     if (s.prior_from_agent && s.prior_from_agent > 0) r.push({ code: "known_counterparty", verdict: "allow", account: a, message: `This agent has ${s.prior_from_agent} earlier transaction(s) with ${a}.`, source: "FastNEAR account index" })

@@ -76,7 +76,12 @@ export interface FunctionCall {
   deposit: bigint
 }
 
-export function serializeTx(p: { signerId: string; publicKey: Uint8Array; nonce: bigint; receiverId: string; blockHash: Uint8Array; actions: FunctionCall[] }): Uint8Array {
+/** A plain NEAR transfer (only used to show that a function-call key can't send one). */
+export interface TransferAction {
+  transfer: bigint
+}
+
+export function serializeTx(p: { signerId: string; publicKey: Uint8Array; nonce: bigint; receiverId: string; blockHash: Uint8Array; actions: (FunctionCall | TransferAction)[] }): Uint8Array {
   const w = new W()
   w.str(p.signerId)
   w.u8(0)
@@ -86,6 +91,11 @@ export function serializeTx(p: { signerId: string; publicKey: Uint8Array; nonce:
   w.bytes(p.blockHash)
   w.u32(p.actions.length)
   for (const a of p.actions) {
+    if ("transfer" in a) {
+      w.u8(3) // Transfer
+      w.uN(a.transfer, 16)
+      continue
+    }
     w.u8(2) // FunctionCall
     w.str(a.methodName)
     const args = new TextEncoder().encode(JSON.stringify(a.args))
@@ -102,6 +112,8 @@ export interface Signer {
   publicKey: string // "ed25519:<base58>"
   /** Signs and sends one function call; resolves with the tx hash and the decoded return value. */
   call(receiverId: string, methodName: string, args: object, gasTgas?: number): Promise<{ hash: string; value: unknown }>
+  /** Signs and sends a plain transfer (a function-call key is refused by the protocol). */
+  transfer(receiverId: string, yocto: bigint): Promise<{ hash: string; value: unknown }>
 }
 
 /** `secretKey` = "ed25519:<base58 of 64 bytes (seed ‖ public)>" as near-cli stores it. */
@@ -112,18 +124,38 @@ export function makeSigner(rpcUrl: string, accountId: string, secretKey: string)
   const pub = ed25519.getPublicKey(seed)
   const publicKey = "ed25519:" + b58encode(pub)
   const rpc = async (method: string, params: unknown) => {
-    const r = (await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((x) => x.json())) as {
-      result?: any
-      error?: any
+    // Retry rate limits and network errors (re-sending the same signed tx is safe: same hash, same nonce).
+    for (let attempt = 0; ; attempt++) {
+      let r: { result?: any; error?: any }
+      try {
+        r = (await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((x) => x.json())) as typeof r
+      } catch (e) {
+        if (attempt < 4) {
+          await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)))
+          continue
+        }
+        throw e
+      }
+      if (r.error && (r.error.code === -429 || r.error.code === 429) && attempt < 4) {
+        await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1)))
+        continue
+      }
+      if (r.error) throw Object.assign(new Error(JSON.stringify(r.error.data ?? r.error.cause ?? r.error).slice(0, 300)), { rpc: r.error })
+      return r.result
     }
-    if (r.error) throw Object.assign(new Error(JSON.stringify(r.error.data ?? r.error.cause ?? r.error).slice(0, 300)), { rpc: r.error })
-    return r.result
   }
   let queue: Promise<unknown> = Promise.resolve() // one tx at a time keeps nonces simple
   return {
     accountId,
     publicKey,
     call(receiverId, methodName, args, gasTgas = 100) {
+      return send(receiverId, [{ methodName, args, gas: BigInt(gasTgas) * 10n ** 12n, deposit: 0n }])
+    },
+    transfer(receiverId, yocto) {
+      return send(receiverId, [{ transfer: yocto }])
+    },
+  }
+  function send(receiverId: string, actions: (FunctionCall | TransferAction)[]) {
       const run = async () => {
         const ak = await rpc("query", { request_type: "view_access_key", finality: "final", account_id: accountId, public_key: publicKey })
         const tx = serializeTx({
@@ -132,7 +164,7 @@ export function makeSigner(rpcUrl: string, accountId: string, secretKey: string)
           nonce: BigInt(ak.nonce) + 1n,
           receiverId,
           blockHash: b58decode(ak.block_hash),
-          actions: [{ methodName, args, gas: BigInt(gasTgas) * 10n ** 12n, deposit: 0n }],
+          actions,
         })
         const sig = ed25519.sign(sha256(tx), seed)
         const signed = new Uint8Array(tx.length + 65)
@@ -149,6 +181,5 @@ export function makeSigner(rpcUrl: string, accountId: string, secretKey: string)
       const p = queue.then(run, run)
       queue = p.catch(() => undefined)
       return p
-    },
   }
 }

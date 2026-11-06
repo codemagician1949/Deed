@@ -19,7 +19,16 @@
   },
   "deedCodeHash": "5L5QNCoxF4NmYJCr6XhsD9QALmP9zttr9eDa6P2hm8ho",
   "runtimes": {
-    "deedhq.testnet": "https://preflight-production-8802.up.railway.app"
+    "deedhq.testnet": "https://preflight-production-8802.up.railway.app",
+    "deed-ops2.testnet": "https://preflight-2-production.up.railway.app"
   },
-  "deedVersion": "v3.3"
+  "deedVersion": "v3.3",
+  "archivalRpc": "https://archival-rpc.testnet.fastnear.com",
+  "reports": "reports.deedhq.testnet",
+  "reportsCodeHash": "3MvLUbw7QVzReaxjoT7mAn2G8ySR1hJYaro8h1xJR6fj",
+  "trustedReporters": [
+    "watchdog.deedhq.testnet"
+  ],
+  "agentVault": "agent-vault.deedhq.testnet",
+  "agentVaultCodeHash": "7Y8RDdvcDrY7BsWakX9TQQEKBva1fVJ5tAvk6m5dHbgU"
 }
