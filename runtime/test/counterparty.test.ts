@@ -5,7 +5,7 @@ const CODE = "Ccode111111111111111111111111111"
 const NONE = "11111111111111111111111111111111"
 const NEAR = 10n ** 24n
 
-type Acct = { now: string | null; ago?: string | null; txs?: { hash: string; signer: boolean }[]; reports?: { reporter: string; reason: string; evidence: string }[]; dispute?: string }
+type Acct = { now: string | null; ago?: string | null; txs?: { hash: string; signer: boolean; ok?: boolean }[]; reports?: { reporter: string; reason: string; evidence: string }[]; dispute?: string }
 function fake(world: Record<string, Acct>, opts: { vault?: { trusted_reporters: string[]; min_reporters: number }; down?: string[] } = {}): Sources {
   const get = (id: string) => {
     if (opts.down?.includes(id)) throw new Error("rpc down")
@@ -63,6 +63,13 @@ describe("counterparty check", () => {
     const r = await checkCounterparty(fake(world), pay("new.testnet", 1n) as never, "vault.testnet", DEF)
     expect(r.verdict).toBe("allow")
     expect(r.reasons.find((x) => x.code === "new_account")?.verdict).toBe("allow")
+  })
+
+  test("refused payments don't make a receiver 'known'", async () => {
+    const world = { "bad.testnet": { now: NONE, ago: NONE, txs: [...old(9), { hash: "f1", signer: false }] }, "vault.testnet": { now: CODE, ago: CODE, txs: [{ hash: "f1", signer: true, ok: false }] } }
+    const r = await checkCounterparty(fake(world as never), pay("bad.testnet", 1n) as never, "vault.testnet", DEF)
+    expect(r.counterparties[0].prior_from_agent).toBe(0)
+    expect(r.reasons.map((x) => x.code)).not.toContain("known_counterparty")
   })
 
   test("warn: contract code changed in the last 7 days", async () => {

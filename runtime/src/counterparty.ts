@@ -70,8 +70,8 @@ export interface Sources {
   accountNow(id: string): Promise<{ code_hash: string } | null>
   /** The same, 7 days ago (archival). */
   account7dAgo(id: string): Promise<{ code_hash: string } | null>
-  /** Transaction hashes that touched the account, and whether `id` signed each one. */
-  history(id: string): Promise<{ count: number; txs: { hash: string; signer: boolean }[] }>
+  /** Transaction hashes that touched the account, whether `id` signed each one, and whether it succeeded. */
+  history(id: string): Promise<{ count: number; txs: { hash: string; signer: boolean; ok?: boolean }[] }>
   reportStatus(id: string): Promise<{ reports: Report[]; dispute: { statement: string } | null }>
   /** The agent's vault config, if `agentId` is an agent-vault. */
   vaultPolicy(agentId: string): Promise<{ trusted_reporters: string[]; min_reporters: number } | null>
@@ -133,7 +133,8 @@ export async function gatherSignals(src: Sources, account: string, agentId: stri
     settle(src.reportStatus(account)),
     agentId ? settle(src.history(agentId)) : Promise.resolve(undefined),
   ])
-  const signed = agentHist ? new Set(agentHist.txs.filter((t) => t.signer).map((t) => t.hash)) : null
+  // Only successful transactions count as having done business (a refused payment is not a relationship).
+  const signed = agentHist ? new Set(agentHist.txs.filter((t) => t.signer && t.ok !== false).map((t) => t.hash)) : null
   return {
     account,
     exists: now === undefined ? null : now !== null,
@@ -252,9 +253,9 @@ export function liveSources(opts: { rpc: string; archival: string; txApi: string
     history: async (id) => {
       const r = (await fetch(`${opts.txApi}/v0/account`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account_id: id }), signal: AbortSignal.timeout(15_000) }).then((x) => x.json())) as {
         txs_count?: number
-        account_txs?: { transaction_hash: string; is_signer: boolean }[]
+        account_txs?: { transaction_hash: string; is_signer: boolean; is_success?: boolean }[]
       }
-      const txs = (r.account_txs ?? []).map((t) => ({ hash: t.transaction_hash, signer: t.is_signer }))
+      const txs = (r.account_txs ?? []).map((t) => ({ hash: t.transaction_hash, signer: t.is_signer, ok: t.is_success }))
       return { count: r.txs_count ?? txs.length, txs }
     },
     reportStatus: async (id) => {
