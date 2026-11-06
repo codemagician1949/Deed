@@ -46,6 +46,11 @@ function getSigner(): Signer {
   return signer
 }
 
+/** Public half of the runtime's settle/refund key (so anyone can read its remaining gas allowance on chain). */
+export function settleKey(): string | null {
+  return CONFIG.runtimeKey ? getSigner().publicKey : null
+}
+
 export const chain: Chain = {
   async owner(name) {
     const t = await view<{ owner_id: string } | null>(CONFIG.registry, "nft_token", { token_id: name })

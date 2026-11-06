@@ -7,10 +7,10 @@
 //                          and answers), only for the Deed's CURRENT holder, proven by a NEP-413 signature
 //   POST /v1/flags         {request} -> deterministic risk flags (free)
 //   GET  /v1/health        what this runtime is and whether it can answer
-import { chain } from "./chain"
+import { chain, settleKey } from "./chain"
 import { CONFIG, CONFIG_BYTES, CONFIG_HASH, SERVICE } from "./config"
 import { recoverInterrupted, retryOnChain, submitJob, type Deps, type Job } from "./jobs"
-import { nearAi } from "./nearai"
+import { aiStatus, nearAi } from "./nearai"
 import { verifyOwner } from "./owner"
 import { riskFlags } from "./risk"
 import { fileStore } from "./store"
@@ -63,6 +63,8 @@ const server = Bun.serve({
         config_hash: CONFIG_HASH,
         can_answer: !!CONFIG.nearAiKey,
         can_settle: !!CONFIG.runtimeKey,
+        settle_key: settleKey(),
+        ai: aiStatus,
         jobs: deps.store.list().length,
       })
     }

@@ -157,7 +157,19 @@ if runtime:
     try:
         base = runtime.rstrip("/")
         h = json.load(urllib.request.urlopen(base + "/v1/health", timeout=30))
-        check(True, f"{runtime} up · model {h['model']} · can_answer {h['can_answer']} · can_settle {h.get('can_settle')}")
+        check(True, f"{runtime} up · model {h['model']}")
+        # Monitoring: the daily CI run fails (and GitHub emails the owner) if the service can't answer or settle.
+        check(bool(h.get("can_answer")) and bool(h.get("can_settle")), f"it can answer (NEAR AI key set: {h.get('can_answer')}) and settle on chain (key set: {h.get('can_settle')})")
+        ai = h.get("ai") or {}
+        bad_ai = ai.get("last_error_at") and (not ai.get("last_ok_at") or ai["last_error_at"] > ai["last_ok_at"]) and re.search(r"HTTP (401|402|403|429)", ai.get("last_error") or "")
+        check(not bad_ai, "its last NEAR AI call wasn't refused for credit or auth" + (f" (last error: {ai.get('last_error')})" if bad_ai else f" (last ok: {ai.get('last_ok_at') or 'none since restart'})"))
+        if h.get("settle_key"):
+            ak = rpc(TESTNET, "query", {"request_type": "view_access_key", "finality": "final", "account_id": h["runtime_id"], "public_key": h["settle_key"]})
+            perm = (ak or {}).get("permission", {})
+            fc = perm.get("FunctionCall", {}) if isinstance(perm, dict) else {}
+            left = int(fc.get("allowance") or 0) / 1e24
+            check(bool(fc) and set(fc.get("method_names", [])) == {"settle_job", "refund_job"} and left >= 0.05,
+                  f"settle key is a function-call key for settle_job/refund_job only, with {left:.3f} NEAR of gas allowance left (needs ≥ 0.05)")
         raw = urllib.request.urlopen(base + "/v1/config/raw", timeout=30).read()
         served = hashlib.sha256(raw).hexdigest()
         local = hashlib.sha256(open(os.path.join(ROOT, "runtime", "preflight.config.json"), "rb").read()).hexdigest()

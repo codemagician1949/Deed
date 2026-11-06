@@ -28,6 +28,9 @@ async function attestedAddresses(model: string): Promise<Set<string>> {
   return addresses
 }
 
+/** Last outcome of a model call, shown in /v1/health so a monitor sees an exhausted or revoked key. */
+export const aiStatus: { last_ok_at: string | null; last_error: string | null; last_error_at: string | null } = { last_ok_at: null, last_error: null, last_error_at: null }
+
 export const nearAi: Inference = {
   async explain(tx: ProposedTx, flags: RiskFlag[], job?: JobContext): Promise<Answer> {
     if (!CONFIG.nearAiKey) throw new Error("NEARAI_API_KEY is not set on this runtime")
@@ -50,7 +53,11 @@ export const nearAi: Inference = {
       signal: AbortSignal.timeout(60_000),
     })
     const responseBody = await res.text()
-    if (!res.ok) throw new Error(`NEAR AI HTTP ${res.status}: ${responseBody.slice(0, 160)}`)
+    if (!res.ok) {
+      Object.assign(aiStatus, { last_error: `HTTP ${res.status}: ${responseBody.slice(0, 120)}`, last_error_at: new Date().toISOString() })
+      throw new Error(`NEAR AI HTTP ${res.status}: ${responseBody.slice(0, 160)}`)
+    }
+    aiStatus.last_ok_at = new Date().toISOString()
     const json = JSON.parse(responseBody) as { id: string; model?: string; choices: { message: { content: string } }[] }
     const explanation = json.choices?.[0]?.message?.content?.trim() ?? ""
     if (!explanation) throw new Error("empty answer from the model")
