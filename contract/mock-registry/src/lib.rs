@@ -8,6 +8,7 @@
 //! - `hos_revert` simulates House of Stake reverting the last rotation inside its window.
 //! The real contracts are exercised separately by the verifier against mainnet bytecode.
 
+use near_sdk::json_types::U64;
 use near_sdk::store::{LookupMap, LookupSet};
 use near_sdk::{env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PromiseResult};
 
@@ -26,6 +27,12 @@ pub struct Entry {
 pub struct TokenView {
     pub token_id: String,
     pub owner_id: AccountId,
+    pub metadata: Option<Meta>,
+}
+
+#[near(serializers = [json])]
+pub struct Meta {
+    pub extra: Option<String>,
 }
 
 #[near(serializers = [borsh, json])]
@@ -51,6 +58,8 @@ pub struct MockRegistry {
     sweeps: Vec<Sweep>,
     /// Test control: make set_payout_account fail (to test that a failed re-point stops the transfer).
     fail_payout: bool,
+    /// Test control: lease end per name (ns), reported like House of Stake does, in metadata.extra.
+    lease_ends: LookupMap<String, u64>,
 }
 
 #[near]
@@ -63,6 +72,7 @@ impl MockRegistry {
             ft_blocked: LookupSet::new(b"f"),
             sweeps: Vec::new(),
             fail_payout: false,
+            lease_ends: LookupMap::new(b"l"),
         }
     }
     pub fn set_fail_payout(&mut self, fail: bool) {
@@ -89,7 +99,11 @@ impl MockRegistry {
 
     // ----- registry surface -----
     pub fn nft_token(&self, token_id: String) -> Option<TokenView> {
-        self.entries.get(&token_id).map(|e| TokenView { token_id: token_id.clone(), owner_id: e.owner.clone() })
+        let extra = self.lease_ends.get(&token_id).map(|ns| format!("{{\"expires_at\":\"{ns}\"}}"));
+        self.entries.get(&token_id).map(|e| TokenView { token_id: token_id.clone(), owner_id: e.owner.clone(), metadata: Some(Meta { extra: extra.clone() }) })
+    }
+    pub fn set_lease_end(&mut self, token_id: String, ns: U64) {
+        self.lease_ends.insert(token_id, ns.0);
     }
     pub fn get_entry(&self, token_id: String) -> Option<Entry> {
         self.entries.get(&token_id).cloned()

@@ -41,6 +41,8 @@ pub const DEFAULT_REVERT_WINDOW_NS: u64 = 5 * 60 * 1_000_000_000;
 pub const DEFAULT_JOB_TIMEOUT_NS: u64 = 15 * 60 * 1_000_000_000;
 /// Longest runtime URL accepted in an activation.
 pub const MAX_RUNTIME_URL_LEN: usize = 200;
+/// A buyer gets at least this much lease left on the name, or the purchase is refused and refunded.
+pub const MIN_LEASE_AFTER_BUY_NS: u64 = 30 * 24 * 60 * 60 * 1_000_000_000;
 /// Hard cap on the resale royalty: 10%.
 pub const MAX_ROYALTY_BPS: u16 = 1_000;
 
@@ -51,6 +53,8 @@ const GAS_SET_PAYOUT: Gas = Gas::from_tgas(50);
 const GAS_CALLBACK: Gas = Gas::from_tgas(20);
 /// The callback that checks the payout re-point, then starts the transfer and its own callback.
 const GAS_AFTER_PAYOUT: Gas = Gas::from_tgas(150);
+/// The callback that checks the lease, then starts the payout re-point and its callback.
+const GAS_AFTER_LEASE: Gas = Gas::from_tgas(215);
 /// What `buy`/`cancel` need attached: the registry transfer chain + our callback + margin.
 pub const GAS_REQUIRED_FOR_TRANSFER: Gas = Gas::from_tgas(200);
 
@@ -62,6 +66,29 @@ pub const GAS_REQUIRED_FOR_TRANSFER: Gas = Gas::from_tgas(200);
 pub struct TokenView {
     pub token_id: String,
     pub owner_id: AccountId,
+    #[serde(default)]
+    pub metadata: Option<TokenMetadataView>,
+}
+
+/// NEP-177 metadata subset: House of Stake puts the lease end in `extra` as JSON (`expires_at`, ns).
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TokenMetadataView {
+    #[serde(default)]
+    pub extra: Option<String>,
+}
+
+impl TokenView {
+    /// Lease end in ns, if the registry reports one.
+    pub fn lease_ends_ns(&self) -> Option<u64> {
+        let extra = self.metadata.as_ref()?.extra.as_ref()?;
+        let v: serde_json::Value = serde_json::from_str(extra).ok()?;
+        match v.get("expires_at")? {
+            serde_json::Value::String(s) => s.parse().ok(),
+            serde_json::Value::Number(n) => n.as_u64(),
+            _ => None,
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -475,7 +502,8 @@ impl Deed {
     // ===== buy =====
 
     /// Pay exactly the listed price. `listing_nonce` pins the exact listing you saw
-    /// (THREAT_MODEL C4). Attach at least 200 Tgas.
+    /// (THREAT_MODEL C4). The name must have at least 30 days of lease left, or the buyer is refunded
+    /// (THREAT_MODEL C9). Attach at least 260 Tgas.
     #[payable]
     pub fn buy(&mut self, token_id: String, expected_price: U128, listing_nonce: U64) -> Promise {
         let buyer = env::predecessor_account_id();
@@ -491,20 +519,57 @@ impl Deed {
         require!(deposit == listing.price_yocto.0, "attach exactly the listed price");
         require!(buyer != listing.seller, "seller cannot buy their own listing");
         require!(
-            env::prepaid_gas() >= GAS_REQUIRED_FOR_TRANSFER.saturating_add(Gas::from_tgas(30)),
-            "attach at least 230 Tgas"
+            env::prepaid_gas() >= GAS_REQUIRED_FOR_TRANSFER.saturating_add(Gas::from_tgas(60)),
+            "attach at least 260 Tgas"
         );
         listing.state = ListingState::Settling { buyer: buyer.clone() };
         self.listings.insert(token_id.clone(), listing.clone());
+        // C9: read the lease first; nothing moves until it's known to last long enough.
+        ext_registry::ext(self.registry.clone())
+            .with_static_gas(GAS_VIEW)
+            .nft_token(token_id.clone())
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_AFTER_LEASE)
+                    .on_buy_lease_checked(token_id, buyer, U128(deposit)),
+            )
+    }
+
+    #[private]
+    pub fn on_buy_lease_checked(&mut self, token_id: String, buyer: AccountId, paid: U128) -> PromiseOrValue<bool> {
+        let lease_end = promise_ok()
+            .and_then(|b| serde_json::from_slice::<Option<TokenView>>(&b).ok())
+            .flatten()
+            .map(|t| t.lease_ends_ns());
+        let reason = match lease_end {
+            None => Some("registry read failed".to_string()),
+            Some(Some(end)) if end < env::block_timestamp().saturating_add(MIN_LEASE_AFTER_BUY_NS) => {
+                Some("lease ends within 30 days; ask the seller to renew it first".to_string())
+            }
+            _ => None,
+        };
+        if let Some(reason) = reason {
+            let mut listing = self.listings.get(&token_id).cloned().expect("listing vanished");
+            listing.state = ListingState::Active;
+            self.listings.insert(token_id.clone(), listing);
+            let _ = Promise::new(buyer.clone()).transfer(NearToken::from_yoctonear(paid.0));
+            emit(
+                "sale_failed_refunded",
+                serde_json::json!({"token_id": token_id, "buyer": buyer, "refund_yocto": paid, "reason": reason}),
+            );
+            return PromiseOrValue::Value(false);
+        }
+        let listing = self.listings.get(&token_id).cloned().expect("listing vanished");
+        let deposit = paid.0;
         let (tla_id, label) = split_token_id(&token_id);
         // B3: point payout at the seller first, so the sale rotation sweeps any NEAR paid in
         // while the name was listed to the seller (not to this escrow). The transfer runs only if that
         // succeeded: a plain `.then` would run it after a failure too and strand the sweep here.
-        self.payout_to(&tla_id, &label, &listing.seller).then(
+        PromiseOrValue::Promise(self.payout_to(&tla_id, &label, &listing.seller).then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_AFTER_PAYOUT)
                 .on_buy_payout_set(token_id, buyer, U128(deposit)),
-        )
+        ))
     }
 
     #[private]

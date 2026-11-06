@@ -544,3 +544,28 @@ async fn failed_payout_repoint_stops_the_sale_and_refunds_the_buyer() -> Result<
     assert_eq!(owner(&env).await?, env.buyer.id().as_str());
     Ok(())
 }
+
+#[tokio::test]
+async fn buyer_refunded_when_the_lease_is_about_to_end() -> Result<()> {
+    // THREAT_MODEL C9: a name whose lease ends within 30 days can't be sold; the buyer gets every coin back.
+    let env = setup().await?;
+    let nonce = list_ok(&env).await?;
+    let now = env.worker.view_block().await?.timestamp();
+    let day: u64 = 24 * 60 * 60 * 1_000_000_000;
+    env.registry.call("set_lease_end").args_json(json!({"token_id": NAME, "ns": (now + 10 * day).to_string()})).transact().await?.into_result()?;
+    env.worker.fast_forward(5).await?;
+    let before = balance(&env.buyer).await?;
+    let r = buy(&env, &env.buyer, PRICE, PRICE, &nonce).await?;
+    assert!(r.is_success(), "the purchase is refused by a refund, not a panic");
+    assert!(format!("{:?}", r.logs()).contains("lease ends within 30 days"), "logs say why: {:?}", r.logs());
+    env.worker.fast_forward(5).await?;
+    let spent = before - balance(&env.buyer).await?;
+    assert!(spent < NearToken::from_millinear(50).as_yoctonear(), "buyer got the price back (spent only gas: {spent})");
+    assert_eq!(owner(&env).await?, env.deed.id().as_str(), "name stays in the escrow");
+    assert_eq!(listing(&env).await?["state"]["kind"], "Active", "listing reopens");
+    // With enough lease left, the same listing sells.
+    env.registry.call("set_lease_end").args_json(json!({"token_id": NAME, "ns": (now + 60 * day).to_string()})).transact().await?.into_result()?;
+    buy(&env, &env.buyer, PRICE, PRICE, &nonce).await?.into_result()?;
+    assert_eq!(owner(&env).await?, env.buyer.id().as_str());
+    Ok(())
+}
