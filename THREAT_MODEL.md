@@ -64,6 +64,7 @@ After a sale:
 | C6 | Proceeds paid twice | v3 pays proceeds once, inside `on_buy_resolved`, which runs once per `buy`; the sale is recorded `Paid`. `claim_proceeds` exists only for sales made before v3 and refuses any sale not `Pending` | escrow.rs `full_sale_seller_locked_out_and_paid_at_once` (claim after the sale fails "already settled"). A failed royalty/proceeds transfer isn't retried (the amount stays in E) |
 | C7 | **Free rental:** B uses the Deed, sends the name back to E with a plain transfer, hopes for a refund | There is nothing to refund: A was paid in the sale tx. `recover_name` hands the name back to B | **real House of Stake bytecode**: real_fleet.rs `buyer_returning_the_name_gets_no_refund_on_real_bytecode`; mock: escrow.rs `buyer_cannot_return_the_name_for_a_refund` |
 | C8 | B resells to a third party right after buying, then someone tries to claw the name back through E | E only acts on names it holds; `recover_name` fails "doesn't hold this name"; A was paid at the sale | real_fleet.rs `onward_transfer_right_after_the_sale_on_real_bytecode` |
+| C9 | A sells a name whose lease is about to end, so B pays for something House of Stake will soon reclaim | v3.2: `buy` reads the token first and, if its lease (`expires_at` in the NEP-177 metadata) ends within 30 days, refunds B in full and reopens the listing; nothing else moves | escrow.rs `buyer_refunded_when_the_lease_is_about_to_end` (mock registry reports a short lease); the real-bytecode sale tests pass the same check with a real lease |
 
 ### D. The service (sale in the middle of a payout), contract v3
 **Rule (written before code, kept):** *a job belongs to the owner on whose watch it was paid.* Since v3 the contract enforces it:
@@ -95,11 +96,11 @@ After a sale:
 - House of Stake is a trusted authority: it can reclaim expired names and run recovery, and it could upgrade its contracts. Deed doesn't remove that trust.
 - **On our testnet replica the team holds the authority roles** (`deedhq.testnet` is admin/council of the registry and extension). The seller-lockout guarantees come from the wallet code, which these roles can't change; but the replica's admin *could* move names through the registry's admin paths. On mainnet those roles belong to House of Stake. The live runs are evidence of the wallet's behaviour, not of the replica operator's honesty.
 - **What a buyer gets, exactly:** the name, its wallet and future earnings, its public record, and the right to choose which runtime serves it. Not compute, an API key or a hosted runtime: today one operator (`deedhq.testnet`) runs Preflight. A buyer can run their own copy and name it (and its URL) in their activation.
-- **Answers are authentic, not proven correct.** The runtime checks that the signer is listed in the attestation report NEAR AI serves; it does not verify the Intel TDX / NVIDIA quotes itself, and its own logic runs on an ordinary server.
+- **Answers are authentic, not proven correct.** The runtime checks each answer's signer against NEAR AI's attestation report. Separately, `verify/check-testnet.py` (run daily in CI) fetches that report with a fresh nonce and verifies it independently: the Intel TDX quote through a public DCAP verifier (Phala's), whose report data must be the signing address plus our nonce, and the GPU evidence through NVIDIA's own attestation service. We rely on those two verifiers and on Intel's and NVIDIA's roots of trust. The runtime's own logic runs on an ordinary server, not in a TEE.
 - A runtime can still answer badly and settle (it is paid for delivering, not for being right); customers judge it by its record.
 - The resale royalty (2.5%) goes to `deedhq.testnet`, i.e. the team, fixed at contract init.
 - The seller keeps knowledge (prompt, customer list). By design there's nothing secret in the config.
-- Lease expiry: a name not renewed is reclaimable. The title page and the buy dialog show the lease end; the contract doesn't enforce a minimum remaining lease.
+- Lease expiry: a name not renewed is reclaimable. The contract refuses (and refunds) a purchase with under 30 days of lease left (C9), and the title page and buy dialog show the lease end; after that, renewing is the buyer's job.
 - Deed's own contract and runtime are **not audited**.
 
 ## Who owes what across a sale (contract v3)

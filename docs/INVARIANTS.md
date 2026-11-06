@@ -1,6 +1,6 @@
 # Invariants: what is guaranteed, by whose code, proven where
 
-Contract `deed` v3.1 (deployed on testnet as `deed.deedhq.testnet`, code hash `BNYM6xvXn2mezXiFCKe7cZsEcbWYePVmWfd8T21PoibK`). v3.1 only adds the `get_version_floor` view to v3 (`EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`, the code the scripted live sale ran on); stored state is unchanged.
+Contract `deed` v3.2 (deployed on testnet as `deed.deedhq.testnet`, code hash `4TM4z2E1g4ssbjoHSX7qXv4TymBn2ppageBYEMT4wAqg`, built reproducibly from commit `1f28063` as its NEP-330 metadata states; `verify/rebuild-deed.sh` rebuilds it and compares). v3.1 added the `get_version_floor` view and v3.2 the lease check in `buy` (C9); the scripted live sale ran on v3 (`EaWvKKAavDRFFQrZhxscHVMwgLciSAqK533Jnumv3vnV`). Stored state is unchanged across these.
 
 Legend for **Proven on**:
 - **Real** = local NEAR sandbox running House of Stake's **mainnet bytecode** (hash-checked) + `deed` ([contract/deed/tests/real_fleet.rs](../contract/deed/tests/real_fleet.rs))
@@ -36,6 +36,7 @@ Legend for **Proven on**:
 | C1 | Failed transfer → full refund, listing reopens | deed `on_buy_resolved` | Real (registry paused mid-sale), Mock | — |
 | C5/C7 | A name back in the escrow after a sale returns to the buyer; nobody is refunded | deed `recover_name` | Real (C7), Mock (C5) | — |
 | C8 | The escrow can't claw back a name it doesn't hold | deed `recover_name` | Real | — |
+| C9 | A buyer gets at least 30 days of lease, or a full refund | deed `buy` → `nft_token` → `on_buy_lease_checked` | Mock (short lease refused, then sold), Real (sale passes with a real lease) | Names with no reported expiry are allowed |
 | — | Royalty ≤ 10%, to the fixed `royalty_account` | deed `new` | Real, Mock | `royalty_account` is the team (`deedhq.testnet`) |
 
 ## Paid jobs (job escrow, contract v3)
@@ -53,6 +54,6 @@ Legend for **Proven on**:
 | D5/D7 | RPC trouble or a change between reads → refuse, record nothing | runtime | Unit | Two reads narrow the race; settlement re-checks on chain |
 | D9 | A crash mid-answer leaves the job refunded, not stuck | runtime `recoverInterrupted`, `retryOnChain` | Unit | — |
 | — | The runtime's key can only settle/refund jobs | NEAR function-call access key (`deploy/runtime-key.sh`) | Testnet (key on `deedhq.testnet`, methods `settle_job, refund_job`) | — |
-| — | Answer bytes signed by an enclave key listed in NEAR AI's attestation report; the signed request names Deed, job, runtime, config | runtime `nearai.ts`, `tee.ts` | Unit; Testnet (answered jobs: hashes + signer + attested ✓) | We don't verify the TDX/NVIDIA quotes ourselves; authentic ≠ correct |
+| — | Answer bytes signed by an enclave key listed in NEAR AI's attestation report; the signed request names Deed, job, runtime, config | runtime `nearai.ts`, `tee.ts` | Unit; Testnet (answered jobs: hashes + signer + attested ✓); `check-testnet.py` §6 re-verifies the TDX quote (public DCAP verifier) and NVIDIA evidence (NVIDIA's service) with a fresh nonce | Relies on those verifiers and Intel/NVIDIA roots of trust; authentic ≠ correct |
 | — | The verdict shown is never milder than the deterministic flags | runtime `verdict.ts`, web job card | Unit | — |
 | — | Customers' transactions aren't public; the holder sees them after a signed sign-in checked on chain | runtime `public.ts`, `owner.ts` | Unit | A signed sign-in is accepted for 10 minutes |

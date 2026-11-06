@@ -16,7 +16,7 @@ Checks:
      The deployed Deed contract's code hash equals the one recorded at deploy (deploy/testnet.json).
 Exit code = number of failed checks.
 """
-import base64, hashlib, json, os, sys, urllib.request
+import base64, hashlib, json, os, sys, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEP = json.load(open(os.path.join(ROOT, "deploy", "testnet.json")))
@@ -188,6 +188,41 @@ if DEP.get("deedCodeHash"):
         check(h == DEP["deedCodeHash"], f"{DEP['deed']} code hash {h[:12]}… = recorded at deploy (deploy/testnet.json)")
     except Exception as e:
         check(False, f"deed code hash: {e}")
+
+if runtime:
+    # Independent check of NEAR AI's enclave claims, with a fresh nonce so the evidence can't be replayed:
+    # the Intel TDX quote (verified by a public DCAP verifier) and the NVIDIA GPU evidence (verified by
+    # NVIDIA's own attestation service) must both carry our nonce, and the TDX report data must bind the
+    # model's signing address, the same address that signed the answers the runtime served.
+    print("\n== 6. NEAR AI enclave attestation (fresh nonce, verified independently)")
+    UA = {"content-type": "application/json", "user-agent": "deed-verify/1.0 (+https://github.com/codemagician1949/Deed)"}
+    def post_ua(url, body):
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=UA)
+        return json.load(urllib.request.urlopen(req, timeout=90))
+    try:
+        import secrets
+        model = json.load(urllib.request.urlopen(runtime.rstrip("/") + "/v1/health", timeout=30))["model"]
+        nonce = secrets.token_hex(32)
+        rep_ai = json.load(urllib.request.urlopen(urllib.request.Request(
+            f"https://cloud-api.near.ai/v1/attestation/report?model={urllib.parse.quote(model)}&signing_algo=ecdsa&nonce={nonce}", headers=UA), timeout=60))
+        m = next(a for a in rep_ai["model_attestations"] if a.get("model_name") == model)
+        addr = m["signing_address"].lower().removeprefix("0x")
+        check(m.get("request_nonce") == nonce, f"report for {model} answers our nonce {nonce[:12]}…")
+        tdx = post_ua("https://cloud-api.phala.network/api/v1/attestations/verify", {"hex": m["intel_quote"]})
+        rd = str(tdx.get("quote", {}).get("body", {}).get("reportdata", "")).lower().removeprefix("0x")
+        check(tdx.get("quote", {}).get("verified") is True, "Intel TDX quote verified (DCAP, Intel collateral, via Phala's public verifier)")
+        check(rd == addr + "0" * 24 + nonce, f"TDX report data = signing address 0x{addr[:10]}… + our nonce (the key lives in that enclave, and the quote is fresh)")
+        nv = post_ua("https://nras.attestation.nvidia.com/v3/attest/gpu", json.loads(m["nvidia_payload"]))
+        claims = json.loads(base64.urlsafe_b64decode(nv[0][1].split(".")[1] + "=="))
+        check(claims.get("x-nvidia-overall-att-result") is True and claims.get("eat_nonce") == nonce,
+              f"NVIDIA GPU evidence verified by NVIDIA's attestation service ({len(nv[1]) if len(nv) > 1 else '?'} GPUs, our nonce)")
+        jobs_pub = json.load(urllib.request.urlopen(runtime.rstrip("/") + f"/v1/jobs?name={name}", timeout=30))
+        jobs_pub = jobs_pub.get("jobs", jobs_pub) if isinstance(jobs_pub, dict) else jobs_pub
+        signers = {((j.get("answer") or {}).get("check") or {}).get("recovered", "").lower().removeprefix("0x") for j in jobs_pub if j.get("answer")}
+        signers.discard("")
+        check(addr in signers, f"the answers the runtime served were signed by this attested address (signer recorded with each answer: {', '.join('0x' + s[:8] + '…' for s in sorted(signers)) or 'none'})")
+    except Exception as e:
+        check(False, f"attestation: {e}")
 
 print(f"\n{'ALL CHECKS PASS' if fails == 0 else str(fails) + ' FAILED'}")
 sys.exit(fails)

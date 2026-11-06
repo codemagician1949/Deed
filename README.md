@@ -6,7 +6,7 @@
 
 - **Live app:** https://deed-near.vercel.app · **Live runtime:** https://preflight-production-8802.up.railway.app/v1/health
 - **Track:** `nfts` · **Network:** NEAR **testnet** only · **License:** MIT
-- The hosted runtime's answers are paid for by the team's NEAR AI Cloud credit; if it runs out, `/v1/health` shows `can_answer: false` and paid jobs are refunded on chain, never kept.
+- The hosted runtime's answers are paid for by the team's NEAR AI Cloud credit. `/v1/health` reports the last model error, and the daily CI check fails (alerting the team) if NEAR AI refuses calls for credit or auth or the settle key runs low; meanwhile paid jobs are refunded on chain, never kept.
 
 **Deed's own work:** the activation registry, the sale escrow, the Preflight service, the web app and a verifier that attacks every sale from the seller's side. **Not ours:** the NFT-is-the-account design and the permission wipe on transfer are House of Stake's Top Level Accounts ([source](https://github.com/houseofstake/tla-contracts); audited by Valhalla Security according to [their README's Status section](https://github.com/houseofstake/tla-contracts#status), which says every finding was fixed; the audit report itself is not published, so we cite their statement; live on mainnet as [`registry.hos`](https://nearblocks.io/address/registry.hos) and [`impl.hos`](https://nearblocks.io/address/impl.hos); wallet sign-in follows [NEP-641](https://github.com/near/NEPs/pull/641)); Deed's code is not audited. House of Stake isn't deployed on testnet, so we run a **replica from the exact mainnet bytecode** under team accounts (code hashes checked live against mainnet).
 
@@ -23,10 +23,11 @@
 ```bash
 git clone https://github.com/codemagician1949/Deed && cd Deed
 python3 verify/check-testnet.py --runtime https://preflight-production-8802.up.railway.app   # ~30 s, no wallet, no NEAR
-contract/test.sh                          # ~5 min: 23 tests (20 in a local NEAR sandbox, 4 of those on House of Stake mainnet bytecode)
+contract/test.sh                          # ~5 min: 24 tests (21 in a local NEAR sandbox, 4 of those on House of Stake mainnet bytecode)
+verify/rebuild-deed.sh                    # ~5 min, needs Docker: rebuilds the deployed Deed contract from the commit in its NEP-330 metadata and compares the hash
 cd runtime && bun install && bun test     # seconds: 39 tests (escrowed job rules, settle/refund on chain, sale mid-job, crash recovery, TEE signature, risk flags)
 ```
-**You will see** `ALL CHECKS PASS`: the testnet replica's code hashes equal live mainnet's (read from both chains now, and from the vendored `.wasm`); every transaction in the published sale report exists on chain with the outcome (and, for refusals, the exact error) the report claims; the sign-in refusals are re-read live; the deployed Deed contract's code hash matches the one recorded in [deploy/testnet.json](deploy/testnet.json); the hosted runtime is the one the on-chain activation names (id **and URL**) and the sha256 of the config bytes it serves equals the activated fingerprint. The `.wasm` hash check makes the contract tests refuse to run on anything but mainnet bytecode.
+**You will see** `ALL CHECKS PASS`: the testnet replica's code hashes equal live mainnet's (read from both chains now, and from the vendored `.wasm`); every transaction in the published sale report exists on chain with the outcome (and, for refusals, the exact error) the report claims; the sign-in refusals are re-read live; the deployed Deed contract's code hash matches the one recorded in [deploy/testnet.json](deploy/testnet.json); the hosted runtime is the one the on-chain activation names (id **and URL**) and the sha256 of the config bytes it serves equals the activated fingerprint; it can answer and settle, and its settle key is limited to `settle_job`/`refund_job` with gas allowance left; and NEAR AI's enclave attestation, fetched with a fresh nonce, verifies independently (Intel TDX quote via a public DCAP verifier, NVIDIA GPU evidence via NVIDIA's service) and names the key that signed the served answers. The `.wasm` hash check makes the contract tests refuse to run on anything but mainnet bytecode.
 
 **The numbers, reconciled** (each counted once):
 
@@ -35,8 +36,8 @@ cd runtime && bun install && bun test     # seconds: 39 tests (escrowed job rule
 | Attempts in the live testnet sale that had to be refused, all refused with their exact on-chain error | **10** = 8 rejected transactions + 2 refused view calls. Of these, **7** are the seller attacking after the sale (6 tx + 1 sign-in view); the others are a stranger settling someone's job, the buyer reusing an old activation version, and the seller's agent trying to sign in as the name | [verify/report-testnet.json](verify/report-testnet.json), [docs/EVIDENCE.md](docs/EVIDENCE.md) |
 | Accepted steps in that sale (pay jobs, settle, list, buy, activate…) | 15 transactions, plus 2 views and 10 balance/state reads | same |
 | Escrowed jobs in that sale | 3 paid into the contract: 2 settled into the name, 1 (paid before the sale) refunded to the customer on chain | same |
-| Contract tests | 23: 16 against a mock registry (forced failures), 4 on House of Stake mainnet bytecode, 3 unit | [contract/deed/tests/](contract/deed/tests/) |
-| Threat-model rows | 33, each naming its test, or "no test" | [THREAT_MODEL.md](THREAT_MODEL.md) |
+| Contract tests | 24: 17 against a mock registry (forced failures), 4 on House of Stake mainnet bytecode, 3 unit | [contract/deed/tests/](contract/deed/tests/) |
+| Threat-model rows | 34, each naming its test, or "no test" | [THREAT_MODEL.md](THREAT_MODEL.md) |
 | Paid Preflight jobs on testnet | escrowed jobs from v3 (above, plus [the first](docs/EVIDENCE.md#live-preflight-jobs-near-testnet)); before v3: 8 jobs, 4 answered with signature checks, 4 refunded | [docs/EVIDENCE.md](docs/EVIDENCE.md#live-preflight-jobs-near-testnet) |
 
 All live activity so far is between the team's own testnet accounts (Kofi, Maya). It shows the mechanism works, not that anyone else wants it.
@@ -78,7 +79,7 @@ After a sale:
 | G4 | The seller's activation no longer counts, and a job paid before the sale can't pay the sold name | `deed` drops the activation at sale, version high-water mark, `settle_job` owner re-check | sandbox + testnet (J2: refunded on chain) + runtime tests |
 | G5 | Buyer paid exactly the price; seller received it minus royalty **in the sale transaction**; failed transfer → buyer refunded | `deed.buy` / `on_buy_payout_set` / `on_buy_resolved` | sandbox (real bytecode: registry paused mid-sale; mock: payout re-point forced to fail) + testnet |
 
-**Not claimed:** that the seller forgets what they knew, that an old operator's server is unable to answer (it just can't be paid; clients should check, above), or that an answer is correct (the enclave signature proves it is authentic). Full model with 33 rows: [THREAT_MODEL.md](THREAT_MODEL.md) · every guarantee by whose code and where it's proven: [docs/INVARIANTS.md](docs/INVARIANTS.md).
+**Not claimed:** that the seller forgets what they knew, that an old operator's server is unable to answer (it just can't be paid; clients should check, above), or that an answer is correct (the enclave signature proves it is authentic). Full model with 34 rows: [THREAT_MODEL.md](THREAT_MODEL.md) · every guarantee by whose code and where it's proven: [docs/INVARIANTS.md](docs/INVARIANTS.md).
 
 ---
 
@@ -87,7 +88,7 @@ After a sale:
 | Part | Status |
 |---|---|
 | Threat model written before code; `deed` contract v3 (activation with runtime URL, sale escrow, **job escrow**, capped royalty, NEP-297 events), upgraded in place with `migrate` | **Done, deployed on testnet** |
-| Sale and job escrow tested in a sandbox on the **exact House of Stake mainnet bytecode** (4 tests) + 16 escrow edge-case tests with forced failures | **Passing in CI** (plus a daily read-only re-check of the live testnet deployment) |
+| Sale and job escrow tested in a sandbox on the **exact House of Stake mainnet bytecode** (4 tests) + 17 escrow edge-case tests with forced failures; deployed contract rebuilt reproducibly from source in CI | **Passing in CI** (plus a daily read-only re-check of the live testnet deployment) |
 | A real Deed sold live on testnet with the seller's attacks run on chain | **Done**, [results](docs/EVIDENCE.md) |
 | Preflight runtime: escrowed jobs settled or refunded on chain with a key limited to those two methods, per-job owner check, NEAR AI verifiable inference with the enclave signature checked, a holder-only job record behind a signed sign-in | **Live** (Railway); settled and refunded jobs on testnet |
 | Web app on live chain data: title page with full history, proof page, market, owner console, Try Preflight | **Live** (Vercel) |
@@ -97,7 +98,8 @@ After a sale:
 | Model verdicts | The model once answered a full-access-key request (flagged high) with "CHECK FIRST". The final verdict is now the stricter of the model's and the flags', applied in code next to the unchanged signed text |
 
 **Done since the first review:** on-chain job escrow (refunds no longer depend on the operator), the runtime's URL recorded in the activation, the seller paid in the sale transaction, a signed holder sign-in for the console's job record.
-**Roadmap:** a reproducible (Docker) build of the Deed contract so its hash can be recomputed from source; a script that recomputes every title-page number from chain data; an outside buyer running their own runtime.
+**Also done:** the deployed Deed contract is a reproducible build (`verify/rebuild-deed.sh`, also in CI); a buyer always gets at least 30 days of lease or a refund; NEAR AI's TDX and GPU attestation is verified independently by the checker.
+**Roadmap:** a script that recomputes every title-page number from chain data; an outside buyer running their own runtime.
 
 ---
 

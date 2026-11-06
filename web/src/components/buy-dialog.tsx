@@ -176,7 +176,7 @@ function LeaseNote({ leaseUntil }: { leaseUntil: string }) {
   return (
     <p className={soon ? "-mt-1 text-xs font-medium text-destructive" : "-mt-1 text-xs text-muted-foreground"}>
       The name is rented until {new Date(leaseUntil).toISOString().slice(0, 10)} ({days} days).
-      {soon ? " That's soon: you'd need to renew it, or House of Stake can reclaim the name." : " After that it must be renewed."}
+      {soon ? " Under 30 days: the Deed contract will refuse this purchase and refund you in full. Ask the seller to renew it first." : " After that it must be renewed. (The contract refuses any sale with under 30 days left.)"}
     </p>
   )
 }
