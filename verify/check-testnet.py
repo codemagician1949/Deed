@@ -14,6 +14,9 @@ Checks:
   4. Optionally, the hosted Preflight runtime is up (and every other runtime an activated Deed names); the sha256 of the raw config bytes it serves equals
      the fingerprint it reports, the Deed's on-chain activation, and runtime/preflight.config.json here.
      The deployed Deed contract's code hash equals the one recorded at deploy (deploy/testnet.json).
+  6. NEAR AI's enclave attestation, verified independently with a fresh nonce.
+  7. The blocklist and agent-vault contracts are the recorded code, the agent's key can only call pay,
+     and /v1/check blocks the staged look-alike but not the honest vendor.
 Exit code = number of failed checks.
 """
 import base64, hashlib, json, os, sys, time, urllib.error, urllib.parse, urllib.request
@@ -271,6 +274,33 @@ if runtime:
         check(addr in signers, f"the answers the runtime served were signed by this attested address (signer recorded with each answer: {', '.join('0x' + s[:8] + '…' for s in sorted(signers)) or 'none'})")
     except Exception as e:
         check(False, f"attestation: {e}")
+
+if DEP.get("reports") and DEP.get("agentVault"):
+    print("\n== 7. Counterparty check for agents that pay (blocklist, agent vault, /v1/check)")
+    try:
+        for acct, key in ((DEP["reports"], "reportsCodeHash"), (DEP["agentVault"], "agentVaultCodeHash")):
+            h = code_hash(TESTNET, acct)
+            check(h == DEP.get(key), f"{acct} code hash {h[:12]}… = recorded at deploy (deploy/testnet.json)")
+        cfg = view(TESTNET, DEP["agentVault"], "get_config", {})
+        check(cfg["reports"] == DEP["reports"], f"the vault reads the blocklist at {cfg['reports']}; trusts {', '.join(cfg['trusted_reporters'])} or {cfg['min_reporters']} reporters")
+        keys = rpc(TESTNET, "query", {"request_type": "view_access_key_list", "finality": "final", "account_id": DEP["agentVault"]})["keys"]
+        fcs = [k for k in keys if isinstance(k["access_key"]["permission"], dict)]
+        fulls = [k for k in keys if k["access_key"]["permission"] == "FullAccess"]
+        ok_fc = all(k["access_key"]["permission"]["FunctionCall"]["receiver_id"] == DEP["agentVault"] and k["access_key"]["permission"]["FunctionCall"]["method_names"] == ["pay"] for k in fcs)
+        check(bool(fcs) and ok_fc, f"every function-call key on the vault ({len(fcs)}) can call only {DEP['agentVault']}.pay; {len(fulls)} full-access key(s) = the team's deployer key (README)")
+        if runtime:
+            def pay_check(to, amount):
+                tx = {"receiver_id": DEP["agentVault"], "actions": [{"type": "FunctionCall", "params": {"methodName": "pay", "args": {"receiver_id": to, "amount": amount, "memo": "check"}, "gas": "100000000000000", "deposit": "0"}}]}
+                return post(runtime.rstrip("/") + "/v1/check", {"tx": tx, "agent_id": DEP["agentVault"]})
+            bad = "mayastudio-billing." + DEP["root"]
+            st = view(TESTNET, DEP["reports"], "get_status", {"account_id": bad})
+            r = pay_check(bad, "400000000000000000000000")
+            check(r["verdict"] == "block" and any(x["code"] == "blocklisted" for x in r["reasons"]) and st["reports"],
+                  f"/v1/check blocks the staged look-alike {bad} (reported by {', '.join(x['reporter'] for x in st['reports'])}, evidence {st['reports'][0]['evidence'] if st['reports'] else '-'})")
+            r = pay_check("maya." + DEP["root"], "100000000000000000000000")
+            check(r["verdict"] in ("allow", "warn") and not any(x["code"] == "blocklisted" for x in r["reasons"]), f"/v1/check doesn't block the honest vendor maya.{DEP['root']} ({r['verdict']})")
+    except Exception as e:
+        check(False, f"counterparty check: {e}")
 
 print(f"\n{'ALL CHECKS PASS' if fails == 0 else str(fails) + ' FAILED'}")
 sys.exit(fails)
