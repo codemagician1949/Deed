@@ -40,12 +40,6 @@ export const list = (call: Call, d: LiveDeed, priceNear: string) =>
 export const cancel = (call: Call, d: LiveDeed) =>
   call({ receiverId: CONFIG.deed, method: "cancel", args: { token_id: d.id }, depositYocto: "1", tgas: 300 })
 
-/** Anyone releases the seller's payment once the 5-minute safety window has passed. */
-export const claim = (call: Call, d: LiveDeed) => {
-  if (!d.latestSale) throw new Error("No sale to settle.")
-  return call({ receiverId: CONFIG.deed, method: "claim_proceeds", args: { sale_id: d.latestSale.id }, tgas: 100 })
-}
-
 /** Owner switches the service on (or updates it) with the next version number. */
 export const activate = (call: Call, d: LiveDeed, priceNear: string, runtimeId = CONFIG.root, runtimeUrl: string | null = defaultRuntimeUrl(runtimeId)) =>
   call({

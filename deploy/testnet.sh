@@ -154,7 +154,7 @@ DEED_HASH=$(local_hash "$DEED_WASM")
 if [ "$(code_hash "$DEED")" != "$DEED_HASH" ]; then
   if [ "$(code_hash "$DEED")" = "11111111111111111111111111111111" ]; then
     near contract deploy "$DEED" use-file "$DEED_WASM" with-init-call new \
-      json-args "{\"registry\":\"$REGISTRY\",\"royalty_account\":\"$CREATOR\",\"royalty_bps\":$ROYALTY_BPS,\"revert_window_ns\":null}" \
+      json-args "{\"registry\":\"$REGISTRY\",\"royalty_account\":\"$CREATOR\",\"royalty_bps\":$ROYALTY_BPS}" \
       prepaid-gas '100 Tgas' attached-deposit '0 NEAR' $NET $SIGN >/dev/null
   else
     near contract deploy "$DEED" use-file "$DEED_WASM" without-init-call $NET $SIGN >/dev/null

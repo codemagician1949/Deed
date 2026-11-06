@@ -159,14 +159,6 @@ async fn buy(env: &Env, who: &Account, price: NearToken, attach: NearToken, nonc
         .await?)
 }
 
-async fn claim(env: &Env, who: &Account, sale_id: &str) -> Result<ExecutionFinalResult> {
-    Ok(who
-        .call(env.deed.id(), "claim_proceeds")
-        .args_json(json!({"sale_id": sale_id}))
-        .gas(TX_GAS)
-        .transact()
-        .await?)
-}
 
 async fn balance(a: &Account) -> Result<u128> {
     Ok(a.view_account().await?.balance.as_yoctonear())
@@ -234,9 +226,9 @@ async fn full_sale_seller_locked_out_and_paid_at_once() -> Result<()> {
     let a: Value = env.deed.view("get_activation").args_json(json!({"token_id": NAME})).await?.json()?;
     assert!(a.is_null(), "activation dropped by the sale");
 
-    // C6: nothing left to claim.
-    let sale_id = sale["id"].as_str().unwrap().to_string();
-    assert!(fails_with(&claim(&env, &env.stranger, &sale_id).await?, "already settled"));
+    // C6: proceeds are paid once, inside the sale; nothing is held back and there is no claim step.
+    assert_eq!(sale["state"], "Paid");
+    assert_eq!(sale["final_after_ns"], sale["sold_at_ns"], "no waiting window");
 
     // A6: the seller can't move the name any more.
     let r = env.seller

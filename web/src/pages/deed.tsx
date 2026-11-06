@@ -8,7 +8,6 @@ import {
   Coins,
   Copy,
   ExternalLink,
-  Hourglass,
   Loader2,
   RefreshCw,
   ShieldX,
@@ -27,7 +26,7 @@ import { useDeed } from "@/lib/data"
 import { dateOnly, explorerTx, near } from "@/lib/format"
 import { CONFIG } from "@/lib/config"
 import { useWallet } from "@/lib/wallet"
-import { cancel, claim } from "@/lib/actions"
+import { cancel } from "@/lib/actions"
 import type { LiveDeed } from "@/lib/live"
 import { cn } from "@/lib/utils"
 import { JobCard } from "@/components/job-card"
@@ -262,23 +261,9 @@ export function DeedPage() {
   )
 }
 
-function useNow(ms = 1000) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), ms)
-    return () => window.clearInterval(t)
-  }, [ms])
-  return now
-}
-
 function ActionCard({ deed, onBuy, onDone }: { deed: LiveDeed; onBuy: () => void; onDone: () => void }) {
   const { account, call } = useWallet()
-  const now = useNow()
   const [busy, setBusy] = useState<string | null>(null)
-  const sale = deed.latestSale
-  const pending = sale && (sale.state === "Pending" || sale.state === "Claiming")
-  const finalAt = sale ? Number(BigInt(sale.final_after_ns) / 1_000_000n) : 0
-  const secondsLeft = Math.max(0, Math.ceil((finalAt - now) / 1000))
 
   const run = async (name: string, fn: () => Promise<string>, success: string) => {
     setBusy(name)
@@ -350,27 +335,6 @@ function ActionCard({ deed, onBuy, onDone }: { deed: LiveDeed; onBuy: () => void
         </div>
       )}
 
-      {pending && sale && (
-        <div className="rounded-2xl border border-border bg-muted/40 p-4 text-sm">
-          <div className="flex items-center gap-2 font-medium">
-            <Hourglass className="size-4 text-primary" /> Seller's payment for the last sale
-          </div>
-          <p className="mt-1 text-muted-foreground">
-            {near(Number(BigInt(sale.price_yocto) - BigInt(sale.royalty_yocto)) / 1e24)} to {sale.seller}.{" "}
-            {secondsLeft > 0
-              ? `Unlocks in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")} (a short settlement window before money leaves the escrow).`
-              : "The safety window has closed. Anyone can release it."}
-          </p>
-          <Button
-            className="mt-3 w-full rounded-xl"
-            variant="outline"
-            disabled={secondsLeft > 0 || !!busy || !account}
-            onClick={() => run("claim", () => claim(call, deed), "Payment released to the seller.")}
-          >
-            {busy === "claim" ? <Loader2 className="animate-spin" /> : <Coins />} {account ? "Release payment" : "Connect to release payment"}
-          </Button>
-        </div>
-      )}
     </motion.div>
   )
 }

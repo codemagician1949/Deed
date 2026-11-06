@@ -197,9 +197,10 @@ pub struct Listing {
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug, PartialEq)]
 pub enum SaleState {
-    /// Name delivered to buyer; seller proceeds locked until `final_after_ns`.
+    /// Before v3 only: proceeds were held for a 5-minute window. No stored sale is in this state (all were
+    /// settled before the v3.3 upgrade removed `claim_proceeds`); kept so older records deserialize.
     Pending,
-    /// A claim is reading the registry.
+    /// Before v3 only (see `Pending`).
     Claiming,
     /// Seller paid.
     Paid,
@@ -216,6 +217,7 @@ pub struct Sale {
     pub buyer: AccountId,
     pub price_yocto: U128,
     pub sold_at_ns: U64,
+    /// Equals `sold_at_ns` since v3: the seller is paid in the sale transaction. Kept for older records.
     pub final_after_ns: U64,
     pub state: SaleState,
     /// Resale cut to the Deed template creator, fixed at sale time (NEP-199 style).
@@ -241,7 +243,7 @@ pub struct Deed {
     activations: LookupMap<String, Activation>,
     listings: IterableMap<String, Listing>,
     sales: LookupMap<u64, Sale>,
-    /// token_id → id of its newest sale (used to block relisting while a sale is unclaimed).
+    /// token_id → id of its newest sale.
     latest_sale: LookupMap<String, u64>,
     // ---- v3 ----
     job_timeout_ns: u64,
@@ -316,7 +318,6 @@ impl Deed {
         registry: AccountId,
         royalty_account: AccountId,
         royalty_bps: u16,
-        revert_window_ns: Option<U64>,
         job_timeout_ns: Option<U64>,
     ) -> Self {
         require!(royalty_bps <= MAX_ROYALTY_BPS, "royalty_bps must be at most 1000 (10%)");
@@ -324,8 +325,9 @@ impl Deed {
             registry,
             royalty_account,
             royalty_bps,
-            // Kept only for sales made before v3; new sales pay the seller at once.
-            revert_window_ns: revert_window_ns.map(|v| v.0).unwrap_or(0),
+            // Unused since v3 (sellers are paid in the sale transaction); the field stays so stored
+            // state from earlier versions keeps deserializing.
+            revert_window_ns: 0,
             next_nonce: 1,
             next_sale_id: 1,
             activations: LookupMap::new(Key::Activations),
@@ -474,13 +476,6 @@ impl Deed {
         if self.listings.contains_key(&token_id) {
             emit("list_rejected", serde_json::json!({"token_id": token_id, "reason": "already listed"}));
             return PromiseOrValue::Value(true);
-        }
-        if let Some(id) = self.latest_sale.get(&token_id) {
-            let sale = self.sales.get(id).expect("sale index broken");
-            if matches!(sale.state, SaleState::Pending | SaleState::Claiming) {
-                emit("list_rejected", serde_json::json!({"token_id": token_id, "reason": "previous sale not settled yet; call claim_proceeds after the revert window"}));
-                return PromiseOrValue::Value(true);
-            }
         }
         split_token_id(&token_id);
         let listing = Listing {
@@ -704,73 +699,6 @@ impl Deed {
             .transfer_sub_account(tla_id, label, buyer)
     }
 
-    // ===== proceeds =====
-
-    /// For sales made before v3 only (they held proceeds for a 5-minute window). Anyone may call once
-    /// the window has passed. Always pays the seller (and royalty); if the name is back in this escrow
-    /// unlisted, it is recorded as the buyer's listing.
-    pub fn claim_proceeds(&mut self, sale_id: U64) -> Promise {
-        let mut sale = self
-            .sales
-            .get(&sale_id.0)
-            .cloned()
-            .unwrap_or_else(|| env::panic_str("no such sale"));
-        require!(sale.state == SaleState::Pending, "sale already settled or being claimed");
-        require!(
-            env::block_timestamp() >= sale.final_after_ns.0,
-            "revert window still open; try again after final_after_ns"
-        );
-        sale.state = SaleState::Claiming;
-        self.sales.insert(sale_id.0, sale.clone());
-        ext_registry::ext(self.registry.clone())
-            .with_static_gas(GAS_VIEW)
-            .nft_token(sale.token_id.clone())
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_CALLBACK)
-                    .on_claim_owner(sale_id),
-            )
-    }
-
-    #[private]
-    pub fn on_claim_owner(&mut self, sale_id: U64) -> SaleState {
-        let mut sale = self.sales.get(&sale_id.0).cloned().expect("sale vanished");
-        let owner = promise_ok()
-            .and_then(|b| serde_json::from_slice::<Option<TokenView>>(&b).ok())
-            .flatten()
-            .map(|t| t.owner_id);
-        let Some(owner) = owner else {
-            sale.state = SaleState::Pending;
-            self.sales.insert(sale_id.0, sale);
-            emit("claim_retry", serde_json::json!({"sale_id": sale_id, "reason": "registry read failed"}));
-            return SaleState::Pending;
-        };
-        // The sale completed when the name reached the buyer, so the seller is always paid.
-        // (On the deployed House of Stake code nothing can undo a completed transfer_sub_account:
-        // `Revert` is only used when an nft_transfer_call receiver refuses the token. The window above
-        // is kept as insurance against future registry changes.)
-        sale.state = SaleState::Paid;
-        self.pay_proceeds(&sale);
-        emit("proceeds_paid", serde_json::json!({"sale": sale}));
-        // If the name is sitting in this escrow unlisted (the buyer sent it back with a plain transfer,
-        // or a future registry reverted it), it belongs to the buyer: record it as the buyer's listing at
-        // the sale price so they can take it back with `cancel`. Nobody ends up with both the money and the name.
-        if owner == env::current_account_id() && !self.listings.contains_key(&sale.token_id) {
-            let listing = Listing {
-                token_id: sale.token_id.clone(),
-                seller: sale.buyer.clone(),
-                price_yocto: sale.price_yocto,
-                nonce: U64(self.take_nonce()),
-                listed_at_ns: U64(env::block_timestamp()),
-                state: ListingState::Active,
-            };
-            self.listings.insert(sale.token_id.clone(), listing.clone());
-            emit("returned_to_buyer_listing", serde_json::json!({"sale_id": sale_id, "listing": listing}));
-        }
-        self.sales.insert(sale_id.0, sale.clone());
-        sale.state
-    }
-
     // ===== cancel =====
 
     /// Seller takes the name back. Attach 1 yocto and at least 230 Tgas.
@@ -843,9 +771,6 @@ impl Deed {
     /// NEP-199-style royalty info: who gets what share of a resale.
     pub fn get_royalty(&self) -> (AccountId, u16) {
         (self.royalty_account.clone(), self.royalty_bps)
-    }
-    pub fn get_revert_window_ns(&self) -> U64 {
-        U64(self.revert_window_ns)
     }
     pub fn get_activation(&self, token_id: String) -> Option<ActivationView> {
         self.activations.get(&token_id).cloned().map(|a| self.view_of(&token_id, a))
