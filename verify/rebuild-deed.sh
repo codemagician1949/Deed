@@ -8,6 +8,7 @@
 #
 # Needs: git, Docker (amd64 images; on Apple Silicon use Colima/Docker Desktop with Rosetta), cargo-near.
 # Usage: verify/rebuild-deed.sh [deed-account]        (~5 min)
+#        on macOS with Colima: TMPDIR=$HOME/.cache verify/rebuild-deed.sh   (the container only sees $HOME)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEED=${1:-$(python3 -c "import json;print(json.load(open('deploy/testnet.json'))['deed'])")}
