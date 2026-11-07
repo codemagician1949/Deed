@@ -193,7 +193,7 @@ export function HomePage() {
       {/* TRUST */}
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <div className="grid items-center gap-10 lg:grid-cols-2">
-          <Reveal>
+          <Reveal className="min-w-0">
             <h2 className="font-heading text-4xl tracking-tight sm:text-5xl">
               Don't trust us. <span className="text-gold-gradient italic">Watch it fail.</span>
             </h2>
@@ -205,7 +205,7 @@ export function HomePage() {
               <ShieldCheck /> See the safety proof
             </Button>
           </Reveal>
-          <Reveal delay={0.1}>
+          <Reveal delay={0.1} className="min-w-0">
             <AttackTicker />
           </Reveal>
         </div>
