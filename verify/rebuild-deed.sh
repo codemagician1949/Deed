@@ -8,7 +8,8 @@
 #
 # Needs: git, Docker (amd64 images; on Apple Silicon use Colima/Docker Desktop with Rosetta), cargo-near.
 # Usage: verify/rebuild-deed.sh [deed-account]        (~5 min)
-#        on macOS with Colima: TMPDIR=$HOME/.cache verify/rebuild-deed.sh   (the container only sees $HOME)
+#        works in a folder Docker can see: $HOME/.cache on macOS, $TMPDIR (or /tmp) elsewhere;
+#        override with DEED_REBUILD_DIR=<a folder shared with Docker>.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEED=${1:-$(python3 -c "import json;print(json.load(open('deploy/testnet.json'))['deed'])")}
@@ -23,10 +24,24 @@ ONCHAIN=$(q "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"re
 echo "$DEED: code hash $ONCHAIN, built from commit $REV"
 echo "$META" | python3 -c 'import sys,json;b=json.load(sys.stdin)["build_info"];print("  image  ", b["build_environment"]);print("  command", " ".join(b["build_command"]))'
 
-# The build container must see this folder: on macOS (Colima/Docker Desktop) only $HOME is shared.
-BASE=${TMPDIR:-$HOME/.cache}; mkdir -p "$BASE"
+# The build container must see this folder. On macOS, Docker Desktop and Colima share $HOME but not
+# $TMPDIR (/var/folders/...), so a clone there looks empty inside the container ("Cargo.toml does not
+# exist"). Default to $HOME/.cache on macOS; override with DEED_REBUILD_DIR.
+if [ -n "${DEED_REBUILD_DIR:-}" ]; then BASE=$DEED_REBUILD_DIR
+elif [ "$(uname -s)" = Darwin ]; then BASE=$HOME/.cache
+else BASE=${TMPDIR:-/tmp}; fi
+mkdir -p "$BASE"
 WORK=$(mktemp -d "$BASE/deed-rebuild.XXXXXX"); chmod 777 "$WORK"
 trap 'rm -rf "$WORK"' EXIT
+# Fail early and clearly if Docker can't see the folder (instead of a missing-Cargo.toml error mid-build).
+IMAGE=$(echo "$META" | python3 -c 'import sys,json;print(json.load(sys.stdin)["build_info"]["build_environment"])')
+touch "$WORK/.docker-can-see-this"
+if ! docker run --rm --platform linux/amd64 --entrypoint /bin/sh -v "$WORK:/probe" "$IMAGE" -c 'test -f /probe/.docker-can-see-this' >/dev/null 2>&1; then
+  echo "FAIL Docker can't see $WORK (or Docker isn't running / can't run amd64 images)." >&2
+  echo "     Start Docker (on Apple Silicon: Colima with --vm-type vz --vz-rosetta, or Docker Desktop with Rosetta)" >&2
+  echo "     and set DEED_REBUILD_DIR to a folder Docker shares, e.g. DEED_REBUILD_DIR=\$HOME/.cache verify/rebuild-deed.sh" >&2
+  exit 2
+fi
 git clone -q https://github.com/codemagician1949/Deed "$WORK/src"
 git -C "$WORK/src" checkout -q "$REV"
 (cd "$WORK/src/contract/deed" && cargo near build reproducible-wasm >/dev/null)
