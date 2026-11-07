@@ -44,7 +44,10 @@ if ! docker run --rm --platform linux/amd64 --entrypoint /bin/sh -v "$WORK:/prob
 fi
 git clone -q https://github.com/codemagician1949/Deed "$WORK/src"
 git -C "$WORK/src" checkout -q "$REV"
-(cd "$WORK/src/contract/deed" && cargo near build reproducible-wasm >/dev/null)
+# cargo-near copies the repo into its own temp folder ($TMPDIR) and mounts that copy in the container,
+# so its TMPDIR must be shared with Docker too.
+mkdir -p "$WORK/tmp"; chmod 777 "$WORK/tmp"
+(cd "$WORK/src/contract/deed" && TMPDIR="$WORK/tmp" cargo near build reproducible-wasm >/dev/null)
 BUILT=$(python3 -c "import hashlib,sys;d=hashlib.sha256(open(sys.argv[1],'rb').read()).digest();A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';n=int.from_bytes(d,'big');s=''
 while n: n,r=divmod(n,58); s=A[r]+s
 print(s)" "$WORK/src/contract/target/near/deed/deed.wasm")
